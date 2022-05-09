@@ -1037,6 +1037,8 @@ func validateNsConfUpdate(
 
 	newNsConfList := newConf["namespaces"].([]interface{})
 
+	// deviceList stores used devices in existing namespaces.
+	// Its key is the device and its value is the namespace where the device is used. 
 	deviceList := map[string]string{}
 
 	for _, singleConfInterface := range newNsConfList {
@@ -1063,6 +1065,7 @@ func validateNsConfUpdate(
 			}
 
 			// Add oldSingleConf ns device list into deviceList if not already present
+			// Keep track of devices referenced in existing namespaces.
 			oldConfStorage := oldSingleConf["storage-engine"].(map[string]interface{})
 			oldConfDevices := oldConfStorage["devices"].([]string)
 			for _, device := range oldConfDevices {
@@ -1132,6 +1135,8 @@ func validateNsConfUpdate(
 						newDevice, namespace,
 					)
 				}
+				// The device of the new namespace does not exists in the deviceList.
+				// We add entry for the new device to keep track of the devices (Use case: addition of multiple ns)
 				deviceList[newDevice] = singleConf["name"].(string)
 			}
 		}
