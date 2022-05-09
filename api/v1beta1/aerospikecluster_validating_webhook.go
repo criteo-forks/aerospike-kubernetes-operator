@@ -1037,6 +1037,8 @@ func validateNsConfUpdate(
 
 	newNsConfList := newConf["namespaces"].([]interface{})
 
+	deviceList := map[string]string{}
+
 	for _, singleConfInterface := range newNsConfList {
 		// Validate new namespaceonf
 		singleConf, ok := singleConfInterface.(map[string]interface{})
@@ -1059,6 +1061,17 @@ func validateNsConfUpdate(
 					oldSingleConfInterface,
 				)
 			}
+
+			// Add oldSingleConf ns device list into deviceList if not already present
+			oldConfStorage := oldSingleConf["storage-engine"].(map[string]interface{})
+			oldConfDevices := oldConfStorage["devices"].([]string)
+			for _, device := range oldConfDevices {
+				_, exists := deviceList[device]
+				if !exists {
+					deviceList[device] = oldSingleConf["name"].(string)
+				}
+			}
+
 
 			if singleConf["name"] == oldSingleConf["name"] {
 				found = true
@@ -1104,14 +1117,25 @@ func validateNsConfUpdate(
 				}
 			}
 		}
-
+		// Criteo enhance: allow addition of new persistent namespaces
 		// Cannot add new persistent namespaces.
 		if !found && !isInMemoryNamespace(singleConf) {
-			return fmt.Errorf(
-				"new persistent storage namespace %s cannot be added. Old namespace list %v, new namespace list %v",
-				singleConf["name"], oldNsConfList, newNsConfList,
-			)
+			// Check if the device list of the new namespace exists in the deviceList map
+			// Device does not exists -> Add it to the deviceList
+			// Device already exists -> Return an error as it is not allowed to use an already used device
+			newNsStorage := singleConf["storage-engine"].(map[string]interface{})
+			newNsDevices := newNsStorage["devices"].([]string)
+			for _, newDevice := range newNsDevices {
+				if namespace, exists := deviceList[newDevice]; exists {
+					return fmt.Errorf(
+						"Device %s is already being used in the namespace %s",
+						newDevice, namespace,
+					)
+				}
+				deviceList[newDevice] = singleConf["name"].(string)
+			}
 		}
+
 	}
 	// Check for namespace name len
 	return nil
