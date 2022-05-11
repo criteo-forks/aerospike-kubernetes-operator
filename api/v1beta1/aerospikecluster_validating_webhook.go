@@ -1038,7 +1038,7 @@ func validateNsConfUpdate(
 	newNsConfList := newConf["namespaces"].([]interface{})
 
 	// deviceList stores used devices in existing namespaces.
-	// Its key is the device and its value is the namespace where the device is used. 
+	// Its key is the device and its value is the namespace where the device is used.
 	deviceList := map[string]string{}
 
 	for _, singleConfInterface := range newNsConfList {
@@ -1051,7 +1051,6 @@ func validateNsConfUpdate(
 		}
 
 		// Validate new namespace conf from old namespace conf. Few filds cannot be updated
-		var found bool
 		oldNsConfList := oldConf["namespaces"].([]interface{})
 
 		for _, oldSingleConfInterface := range oldNsConfList {
@@ -1075,10 +1074,7 @@ func validateNsConfUpdate(
 				}
 			}
 
-
 			if singleConf["name"] == oldSingleConf["name"] {
-				found = true
-
 				// replication-factor update not allowed
 				if isValueUpdated(
 					oldSingleConf, singleConf, "replication-factor",
@@ -1104,34 +1100,33 @@ func validateNsConfUpdate(
 				}
 
 				// storage-engine update not allowed for now
-				storage, ok1 := singleConf["storage-engine"]
-				oldStorage, ok2 := oldSingleConf["storage-engine"]
+				storage, ok1 := singleConf["storage-engine"].(map[string]interface{})
+				oldStorage, ok2 := oldSingleConf["storage-engine"].(map[string]interface{})
 				if ok1 && !ok2 || !ok1 && ok2 {
 					return fmt.Errorf(
 						"storage-engine config cannot be added or removed from existing cluster. Old namespace config %v, new namespace config %v",
 						oldSingleConf, singleConf,
 					)
 				}
-				if ok1 && ok2 && !reflect.DeepEqual(storage, oldStorage) {
-					return fmt.Errorf(
-						"storage-engine config cannot be changed. Old namespace config %v, new namespace config %v",
-						oldSingleConf, singleConf,
-					)
+				err := validateStorageConfiguration(oldStorage, storage, singleConf["name"].(string))
+				if ok1 && ok2 && err != nil {
+					return fmt.Errorf("%v", err)
 				}
 			}
 		}
-		// Criteo enhance: allow addition of new persistent namespaces
+		// Criteo enhance: allow addition of new persistent namespaces and new devices to existing namespace
 		// Cannot add new persistent namespaces.
-		if !found && !isInMemoryNamespace(singleConf) {
-			// Check if the device list of the new namespace exists in the deviceList map
+		if !isInMemoryNamespace(singleConf) {
+			// Check if the device list of the namespace exists in the deviceList map
 			// Device does not exists -> Add it to the deviceList
-			// Device already exists -> Return an error as it is not allowed to use an already used device
+			// Device already exists and not used by the same namespace -> Return an error as it is not allowed to use an already used device
 			newNsStorage := singleConf["storage-engine"].(map[string]interface{})
 			newNsDevices := newNsStorage["devices"].([]string)
 			for _, newDevice := range newNsDevices {
-				if namespace, exists := deviceList[newDevice]; exists {
+				namespace, exists := deviceList[newDevice]
+				if exists && namespace != singleConf["name"].(string) {
 					return fmt.Errorf(
-						"Device %s is already being used in the namespace %s",
+						"device %s is already being used in the namespace %s",
 						newDevice, namespace,
 					)
 				}
@@ -1451,5 +1446,54 @@ func ValidateAerospikeObjectMeta(aerospikeObjectMeta *AerospikeObjectMeta) error
 		}
 
 	}
+	return nil
+}
+
+// validateStorageConfiguration returns an error if:
+// -) the type of storage is not the same for old and new storage configuration.
+// -) new devices have been deleted from the new storage configuration.
+// -) new devices are used more than once in the same namespace.
+func validateStorageConfiguration(
+	oldStorage map[string]interface{}, newStorage map[string]interface{},
+	namespace string,
+) error {
+
+	oldStorageType := oldStorage["type"].(string)
+	newStorageType := newStorage["type"].(string)
+
+	if oldStorageType != newStorageType {
+		return fmt.Errorf(
+			"type of storage-engine cannot be changed. Old type %s, new type %s",
+			oldStorageType, newStorageType,
+		)
+	}
+
+	oldStorageDevices := oldStorage["devices"].([]string)
+	newStorageDevices := newStorage["devices"].([]string)
+
+	// Store new devices to a map(key=device, value=number of time the device exists in the namespace).
+	newDeviceList := map[string]int{}
+	for _, newDevice := range newStorageDevices {
+		newDeviceList[newDevice] = newDeviceList[newDevice] + 1
+		// If the device exists more than 1 time, it means that it's using the same device twice in the same namespace.
+		if newDeviceList[newDevice] > 1 {
+			return fmt.Errorf(
+				"device %s is already being used by the same namespace %s",
+				newDevice, namespace,
+			)
+		}
+	}
+
+	for _, oldDevice := range oldStorageDevices {
+		// If an old device is not found in the new device list, it means it's been deleted.
+		// The deletion of a device is an operation not supported yet.
+		if _, found := newDeviceList[oldDevice]; !found {
+			return fmt.Errorf(
+				"device %s cannot be removed from the namespace %s. This operation is not supported yet",
+				oldDevice, namespace,
+			)
+		}
+	}
+
 	return nil
 }
