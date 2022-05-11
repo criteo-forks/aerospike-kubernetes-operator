@@ -11,11 +11,11 @@ var aslog = logf.Log.WithName("Test validateNsConfUpdate")
 // validateNsConfUpdate should return nil because we are adding a new namespace with unused devices
 func TestAddPesistentNamespaceWithNotUsedDevices(t *testing.T) {
 	oldNsConf := map[string][]string{
-		"namespace-0": {"/opt/data01/xvd01", "/opt/data01/xvd02"},
+		"namespace-0": {"/dev/nvme1", "/dev/nvme2"},
 	}
 	newNsConf := map[string][]string{
-		"namespace-0":   {"/opt/data01/xvd01", "/opt/data01/xvd02"},
-		"new-namespace": {"/opt/data02/xvd01", "/opt/data02/xvd02"},
+		"namespace-0":   {"/dev/nvme1", "/dev/nvme2"},
+		"new-namespace": {"/dev/nvme3", "/dev/nvme4"},
 	}
 
 	oldNamespaceConfig, newNamespaceConfig := prepareNsConfigurations(oldNsConf, newNsConf)
@@ -29,11 +29,11 @@ func TestAddPesistentNamespaceWithNotUsedDevices(t *testing.T) {
 // validateNsConfUpdate should return an error because we are using an already used device
 func TestAddPesistentNamespaceWithAlreadyUsedDevices(t *testing.T) {
 	oldNsConf := map[string][]string{
-		"namespace-0": {"/opt/data01/xvd01", "/opt/data01/xvd02"},
+		"namespace-0": {"/dev/nvme1", "/dev/nvme2"},
 	}
 	newNsConf := map[string][]string{
-		"namespace-0":   {"/opt/data01/xvd01", "/opt/data01/xvd02"},
-		"new-namespace": {"/opt/data01/xvd01", "/opt/data02/xvd02"}, // <- Using same device "/opt/data01/xvd01" as namespace-0
+		"namespace-0":   {"/dev/nvme1", "/dev/nvme2"},
+		"new-namespace": {"/dev/nvme1", "/dev/nvme4"}, // <- Using same device "/dev/nvme1" as namespace-0
 	}
 
 	oldNamespaceConfig, newNamespaceConfig := prepareNsConfigurations(oldNsConf, newNsConf)
@@ -47,12 +47,12 @@ func TestAddPesistentNamespaceWithAlreadyUsedDevices(t *testing.T) {
 // validateNsConfUpdate should return nil because we are adding multiple namespaces with unused devices
 func TestAddMultiplePesistentNamespacesWithNotUsedDevices(t *testing.T) {
 	oldNsConf := map[string][]string{
-		"namespace-0": {"/opt/data01/xvd01", "/opt/data01/xvd02"},
+		"namespace-0": {"/dev/nvme1", "/dev/nvme2"},
 	}
 	newNsConf := map[string][]string{
-		"namespace-0":     {"/opt/data01/xvd01", "/opt/data01/xvd02"},
-		"new-namespace-0": {"/opt/data02/xvd01", "/opt/data02/xvd02"},
-		"new-namespace-1": {"/opt/data02/xvd03", "/opt/data02/xvd04"},
+		"namespace-0":     {"/dev/nvme1", "/dev/nvme2"},
+		"new-namespace-0": {"/dev/nvme3", "/dev/nvme4"},
+		"new-namespace-1": {"/dev/nvme5", "/dev/nvme6"},
 	}
 
 	oldNamespaceConfig, newNamespaceConfig := prepareNsConfigurations(oldNsConf, newNsConf)
@@ -66,12 +66,12 @@ func TestAddMultiplePesistentNamespacesWithNotUsedDevices(t *testing.T) {
 // validateNsConfUpdate should return an error because we are adding multiple namespaces with already used devices
 func TestAddMultiplePesistentNamespacesWithAlreadyUsedDevices(t *testing.T) {
 	oldNsConf := map[string][]string{
-		"namespace-0": {"/opt/data01/xvd01", "/opt/data01/xvd02"},
+		"namespace-0": {"/dev/nvme1", "/dev/nvme2"},
 	}
 	newNsConf := map[string][]string{
-		"namespace-0":     {"/opt/data01/xvd01", "/opt/data01/xvd02"},
-		"new-namespace-0": {"/opt/data02/xvd01", "/opt/data02/xvd02"},
-		"new-namespace-1": {"/opt/data02/xvd01", "/opt/data02/xvd04"}, // <- Using same device "/opt/data02/xvd01" as new-namespace-0
+		"namespace-0":     {"/dev/nvme1", "/dev/nvme2"},
+		"new-namespace-0": {"/dev/nvme3", "/dev/nvme4"},
+		"new-namespace-1": {"/dev/nvme3", "/dev/nvme6"}, // <- Using same device "/dev/nvme3" as new-namespace-0
 	}
 
 	oldNamespaceConfig, newNamespaceConfig := prepareNsConfigurations(oldNsConf, newNsConf)
@@ -85,14 +85,14 @@ func TestAddMultiplePesistentNamespacesWithAlreadyUsedDevices(t *testing.T) {
 // validateNsConfUpdate should return nil because we are adding unused devices to an existing namespace
 func TestAddDevicesToExistantNamespace(t *testing.T) {
 	oldNsConf := map[string][]string{
-		"namespace-0":     {"/opt/data01/xvd01", "/opt/data01/xvd02"},
-		"new-namespace-0": {"/opt/data02/xvd01", "/opt/data02/xvd02"},
+		"namespace-0":     {"/dev/nvme1", "/dev/nvme2"},
+		"new-namespace-0": {"/dev/nvme3", "/dev/nvme4"},
 	}
 	newNsConf := map[string][]string{
-		"namespace-0": {"/opt/data01/xvd01", "/opt/data01/xvd02"},
+		"namespace-0": {"/dev/nvme1", "/dev/nvme2"},
 		"new-namespace-0": {
-			"/opt/data02/xvd01", "/opt/data02/xvd02",
-			"/opt/data02/xvd03", "/opt/data02/xvd04",
+			"/dev/nvme3", "/dev/nvme4",
+			"/dev/nvme5", "/dev/nvme6",
 		},
 	}
 
@@ -107,14 +107,14 @@ func TestAddDevicesToExistantNamespace(t *testing.T) {
 // validateNsConfUpdate should return an error because we are adding used devices by another namespace to an existing namespace
 func TestAddUsedDeviceByAnotherNamespaceToExistantNamespace(t *testing.T) {
 	oldNsConf := map[string][]string{
-		"namespace-0":     {"/opt/data01/xvd01", "/opt/data01/xvd02"},
-		"new-namespace-0": {"/opt/data02/xvd01", "/opt/data02/xvd02"},
+		"namespace-0":     {"/dev/nvme1", "/dev/nvme2"},
+		"new-namespace-0": {"/dev/nvme3", "/dev/nvme4"},
 	}
 	newNsConf := map[string][]string{
-		"namespace-0": {"/opt/data01/xvd01", "/opt/data01/xvd02"},
+		"namespace-0": {"/dev/nvme1", "/dev/nvme2"},
 		"new-namespace-0": {
-			"/opt/data02/xvd01", "/opt/data02/xvd02",
-			"/opt/data01/xvd01", "/opt/data02/xvd04", // <- Using same device "/opt/data01/xvd01" as namespace-0
+			"/dev/nvme3", "/dev/nvme4",
+			"/dev/nvme1", "/dev/nvme6", // <- Using same device "/dev/nvme1" as namespace-0
 		},
 	}
 
@@ -129,14 +129,14 @@ func TestAddUsedDeviceByAnotherNamespaceToExistantNamespace(t *testing.T) {
 // validateNsConfUpdate should return an error because we are adding used devices by same namespace to an existing namespace
 func TestAddUsedDeviceBySameNamespaceToExistantNamespace(t *testing.T) {
 	oldNsConf := map[string][]string{
-		"namespace-0":     {"/opt/data01/xvd01", "/opt/data01/xvd02"},
-		"new-namespace-0": {"/opt/data02/xvd01", "/opt/data02/xvd02"},
+		"namespace-0":     {"/dev/nvme1", "/dev/nvme2"},
+		"new-namespace-0": {"/dev/nvme3", "/dev/nvme4"},
 	}
 	newNsConf := map[string][]string{
-		"namespace-0": {"/opt/data01/xvd01", "/opt/data01/xvd02"},
+		"namespace-0": {"/dev/nvme1", "/dev/nvme2"},
 		"new-namespace-0": {
-			"/opt/data02/xvd01", "/opt/data02/xvd02",
-			"/opt/data02/xvd01", "/opt/data02/xvd04", // <- Using same device "/opt/data02/xvd01" as new-namespace-0
+			"/dev/nvme3", "/dev/nvme4",
+			"/dev/nvme3", "/dev/nvme6", // <- Using same device "/dev/nvme3" as new-namespace-0
 		},
 	}
 
@@ -151,19 +151,19 @@ func TestAddUsedDeviceBySameNamespaceToExistantNamespace(t *testing.T) {
 // validateNsConfUpdate should return nil because we are adding unused devices to an existing namespace
 func TestAddDevicesToMultipleExistantNamespaces(t *testing.T) {
 	oldNsConf := map[string][]string{
-		"namespace-0":     {"/opt/data01/xvd01", "/opt/data01/xvd02"},
-		"new-namespace-0": {"/opt/data02/xvd01", "/opt/data02/xvd02"},
-		"new-namespace-1": {"/opt/data03/xvd01", "/opt/data03/xvd02"},
+		"namespace-0":     {"/dev/nvme1", "/dev/nvme2"},
+		"new-namespace-0": {"/dev/nvme3", "/dev/nvme4"},
+		"new-namespace-1": {"/dev/nvme7", "/dev/nvme8"},
 	}
 	newNsConf := map[string][]string{
-		"namespace-0": {"/opt/data01/xvd01", "/opt/data01/xvd02"},
+		"namespace-0": {"/dev/nvme1", "/dev/nvme2"},
 		"new-namespace-0": {
-			"/opt/data02/xvd01", "/opt/data02/xvd02",
-			"/opt/data02/xvd03", "/opt/data02/xvd04",
+			"/dev/nvme3", "/dev/nvme4",
+			"/dev/nvme5", "/dev/nvme6",
 		},
 		"new-namespace-1": {
-			"/opt/data03/xvd01", "/opt/data03/xvd02",
-			"/opt/data03/xvd03", "/opt/data03/xvd04",
+			"/dev/nvme7", "/dev/nvme8",
+			"/dev/nvme9", "/dev/nvme10",
 		},
 	}
 
@@ -179,18 +179,18 @@ func TestAddDevicesToMultipleExistantNamespaces(t *testing.T) {
 func TestAddUsedDeviceToMultipleExistantNamespace(t *testing.T) {
 	oldNsConf := map[string][]string{
 		"namespace-0":     {},
-		"new-namespace-0": {"/opt/data02/xvd01", "/opt/data02/xvd02"},
-		"new-namespace-1": {"/opt/data03/xvd01", "/opt/data03/xvd02"},
+		"new-namespace-0": {"/dev/nvme3", "/dev/nvme4"},
+		"new-namespace-1": {"/dev/nvme7", "/dev/nvme8"},
 	}
 	newNsConf := map[string][]string{
-		"namespace-0": {"/opt/data01/xvd01", "/opt/data01/xvd02"},
+		"namespace-0": {"/dev/nvme1", "/dev/nvme2"},
 		"new-namespace-0": {
-			"/opt/data02/xvd01", "/opt/data02/xvd02",
-			"/opt/data02/xvd03", "/opt/data01/xvd01",
+			"/dev/nvme3", "/dev/nvme4",
+			"/dev/nvme5", "/dev/nvme6",
 		},
 		"new-namespace-1": {
-			"/opt/data03/xvd01", "/opt/data03/xvd02",
-			"/opt/data02/xvd03", "/opt/data03/xvd04", // <- Using same device "/opt/data02/xvd03" as new-namespace-0
+			"/dev/nvme7", "/dev/nvme8",
+			"/dev/nvme5", "/dev/nvme10", // <- Using same device "/dev/nvme5" as new-namespace-0
 		},
 	}
 
@@ -203,76 +203,76 @@ func TestAddUsedDeviceToMultipleExistantNamespace(t *testing.T) {
 }
 
 // validateStorageConfiguration should return nil because we are adding unused devices and keeping the same type.
-func TestValidateStorageConfiguration(t *testing.T) {
+func TestValidateStorageEngineConfiguration(t *testing.T) {
 	oldStorage := map[string]interface{}{
 		"type":    "device",
-		"devices": []string{"/opt/data01/xvd01", "/opt/data01/xvd02"},
+		"devices": []string{"/dev/nvme1", "/dev/nvme2"},
 	}
 	newStorage := map[string]interface{}{
 		"type": "device",
 		"devices": []string{
-			"/opt/data01/xvd01", "/opt/data01/xvd02",
-			"/opt/data01/xvd03", "/opt/data01/xvd04",
+			"/dev/nvme1", "/dev/nvme2",
+			"/dev/nvme3", "/dev/nvme4",
 		},
 	}
 
-	err := validateStorageConfiguration(oldStorage, newStorage, "test-namespace")
+	err := validateStorageEngineConfiguration(oldStorage, newStorage, "test-namespace")
 	if err != nil {
 		t.Fatalf("Got error while validating storage configuration: %v", err)
 	}
 }
 
 // validateStorageConfiguration should return an error because we are changing the type of the storage.
-func TestValidateStorageConfigurationByChangingStorageType(t *testing.T) {
+func TestValidateStorageEngineConfigurationByChangingStorageType(t *testing.T) {
 	oldStorage := map[string]interface{}{
 		"type":    "device",
-		"devices": []string{"/opt/data01/xvd01", "/opt/data01/xvd02"},
+		"devices": []string{"/dev/nvme1", "/dev/nvme2"},
 	}
 	newStorage := map[string]interface{}{
 		"type":    "memory",
 		"devices": []string{},
 	}
 
-	err := validateStorageConfiguration(oldStorage, newStorage, "test-namespace")
+	err := validateStorageEngineConfiguration(oldStorage, newStorage, "test-namespace")
 	if err == nil {
 		t.Fatalf("Got error while validating storage configuration: %v", err)
 	}
 }
 
 // validateStorageConfiguration should return an error because we are using a same device.
-func TestValidateStorageConfigurationByUsingUsedDevice(t *testing.T) {
+func TestValidateStorageEngineConfigurationByUsingUsedDevice(t *testing.T) {
 	oldStorage := map[string]interface{}{
 		"type":    "device",
-		"devices": []string{"/opt/data01/xvd01", "/opt/data01/xvd02"},
+		"devices": []string{"/dev/nvme1", "/dev/nvme2"},
 	}
 	newStorage := map[string]interface{}{
 		"type": "device",
 		"devices": []string{
-			"/opt/data01/xvd01", "/opt/data01/xvd02",
-			"/opt/data01/xvd01", "/opt/data01/xvd03", // <- Using same device "/opt/data01/xvd01" twice
+			"/dev/nvme1", "/dev/nvme2",
+			"/dev/nvme1", "/dev/nvme3", // <- Using same device "/dev/nvme1" twice
 		},
 	}
 
-	err := validateStorageConfiguration(oldStorage, newStorage, "test-namespace")
+	err := validateStorageEngineConfiguration(oldStorage, newStorage, "test-namespace")
 	if err == nil {
 		t.Fatalf("Got error while validating storage configuration: %v", err)
 	}
 }
 
 // validateStorageConfiguration should return an error because we are deleting a device.
-func TestValidateStorageConfigurationByDeletingDevice(t *testing.T) {
+func TestValidateStorageEngineConfigurationByDeletingDevice(t *testing.T) {
 	oldStorage := map[string]interface{}{
 		"type":    "device",
-		"devices": []string{"/opt/data01/xvd01", "/opt/data01/xvd02"},
+		"devices": []string{"/dev/nvme1", "/dev/nvme2"},
 	}
 	newStorage := map[string]interface{}{
 		"type": "device",
 		"devices": []string{
-			"/opt/data01/xvd02", "/opt/data01/xvd03", "/opt/data01/xvd04", // <- Deleting device "/opt/data01/xvd01"
+			"/dev/nvme2", "/dev/nvme3", "/dev/nvme4", // <- Deleting device "/dev/nvme1"
 		},
 	}
 
-	err := validateStorageConfiguration(oldStorage, newStorage, "test-namespace")
+	err := validateStorageEngineConfiguration(oldStorage, newStorage, "test-namespace")
 	if err == nil {
 		t.Fatalf("Got error while validating storage configuration: %v", err)
 	}

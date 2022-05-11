@@ -1063,7 +1063,6 @@ func validateNsConfUpdate(
 				)
 			}
 
-			// Add oldSingleConf ns device list into deviceList if not already present
 			// Keep track of devices referenced in existing namespaces.
 			oldConfStorage := oldSingleConf["storage-engine"].(map[string]interface{})
 			oldConfDevices := oldConfStorage["devices"].([]string)
@@ -1108,7 +1107,7 @@ func validateNsConfUpdate(
 						oldSingleConf, singleConf,
 					)
 				}
-				err := validateStorageConfiguration(oldStorage, storage, singleConf["name"].(string))
+				err := validateStorageEngineConfiguration(oldStorage, storage, singleConf["name"].(string))
 				if ok1 && ok2 && err != nil {
 					return fmt.Errorf("%v", err)
 				}
@@ -1449,17 +1448,19 @@ func ValidateAerospikeObjectMeta(aerospikeObjectMeta *AerospikeObjectMeta) error
 	return nil
 }
 
-// validateStorageConfiguration returns an error if:
+// validateStorageEngineConfiguration returns an error if:
 // -) the type of storage is not the same for old and new storage configuration.
 // -) new devices have been deleted from the new storage configuration.
 // -) new devices are used more than once in the same namespace.
-func validateStorageConfiguration(
-	oldStorage map[string]interface{}, newStorage map[string]interface{},
+func validateStorageEngineConfiguration(
+	oldStorage interface{}, newStorage interface{},
 	namespace string,
 ) error {
+	oldStorageToMap := oldStorage.(map[string]interface{})
+	newStoragetoMap := newStorage.(map[string]interface{})
 
-	oldStorageType := oldStorage["type"].(string)
-	newStorageType := newStorage["type"].(string)
+	oldStorageType := oldStorageToMap["type"].(string)
+	newStorageType := newStoragetoMap["type"].(string)
 
 	if oldStorageType != newStorageType {
 		return fmt.Errorf(
@@ -1468,8 +1469,8 @@ func validateStorageConfiguration(
 		)
 	}
 
-	oldStorageDevices := oldStorage["devices"].([]string)
-	newStorageDevices := newStorage["devices"].([]string)
+	oldStorageDevices := oldStorageToMap["devices"].([]string)
+	newStorageDevices := newStoragetoMap["devices"].([]string)
 
 	// Store new devices to a map(key=device, value=number of time the device exists in the namespace).
 	newDeviceList := map[string]int{}
