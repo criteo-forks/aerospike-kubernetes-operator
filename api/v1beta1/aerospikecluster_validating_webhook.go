@@ -1099,8 +1099,8 @@ func validateNsConfUpdate(
 				}
 
 				// storage-engine update not allowed for now
-				storage, ok1 := singleConf["storage-engine"].(map[string]interface{})
-				oldStorage, ok2 := oldSingleConf["storage-engine"].(map[string]interface{})
+				storage, ok1 := singleConf["storage-engine"]
+				oldStorage, ok2 := oldSingleConf["storage-engine"]
 				if ok1 && !ok2 || !ok1 && ok2 {
 					return fmt.Errorf(
 						"storage-engine config cannot be added or removed from existing cluster. Old namespace config %v, new namespace config %v",
