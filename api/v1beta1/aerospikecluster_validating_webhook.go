@@ -1047,9 +1047,7 @@ func validateNsConfUpdate(
 		}
 
 		// Validate new namespace conf from old namespace conf. Few filds cannot be updated
-		/*
-			var found bool
-		*/
+		var found bool
 		oldNsConfList := oldConf["namespaces"].([]interface{})
 
 		for _, oldSingleConfInterface := range oldNsConfList {
@@ -1063,9 +1061,7 @@ func validateNsConfUpdate(
 			}
 
 			if singleConf["name"] == oldSingleConf["name"] {
-				/*
-					found = true
-				*/
+				found = true
 
 				// replication-factor update not allowed
 				if isValueUpdated(
@@ -1101,11 +1097,11 @@ func validateNsConfUpdate(
 					)
 				}
 				if ok1 && ok2 && !reflect.DeepEqual(storage, oldStorage) {
-					/*
-						return fmt.Errorf(
-							"storage-engine config cannot be changed. Old namespace config %v, new namespace config %v",
-							oldSingleConf, singleConf,
-						)
+					/* Allow a subset of storage-engine modifications (addition of unused devices)
+					return fmt.Errorf(
+						"storage-engine config cannot be changed. Old namespace config %v, new namespace config %v",
+						oldSingleConf, singleConf,
+					)
 					*/
 					oldStorageEngineConf := oldStorage.(map[string]interface{})
 					newStorageEngineConf := storage.(map[string]interface{})
@@ -1119,14 +1115,14 @@ func validateNsConfUpdate(
 		}
 
 		// Cannot add new persistent namespaces.
-		/* Allow addition of persistent namespaces
 		if !found && !isInMemoryNamespace(singleConf) {
+			/* Allow addition of persistent namespaces
 			return fmt.Errorf(
 				"new persistent storage namespace %s cannot be added. Old namespace list %v, new namespace list %v",
 				singleConf["name"], oldNsConfList, newNsConfList,
 			)
+			*/
 		}
-		*/
 	}
 
 	err := validateStorageEngineDeviceList(&oldConf, &newConf)
@@ -1170,6 +1166,7 @@ func validateStorageEngineConfUpdate(
 func validateStorageEngineDeviceList(
 	oldConf *map[string]interface{}, newConf *map[string]interface{},
 ) error {
+	// check that each device appears once in new Storage configuration (ie no reuse between namespaces)
 	newConfDeviceList, err := getDeviceList(newConf)
 	if err != nil {
 		return err
@@ -1180,6 +1177,8 @@ func validateStorageEngineDeviceList(
 		return err
 	}
 
+	// check that devices that appear in both oldStorage and newStorage are used by same namespace
+	// (ie no reallocation of a device to another namespace)
 	for device, newNamespace := range *newConfDeviceList {
 		oldNamespace, exists := (*oldConfDeviceList)[device]
 		if exists && oldNamespace != newNamespace {
@@ -1190,6 +1189,7 @@ func validateStorageEngineDeviceList(
 		}
 	}
 
+	// check that devices from previous configuration still appear in new configuration
 	for device, oldNamespace := range *oldConfDeviceList {
 		_, exists := (*newConfDeviceList)[device]
 		if !exists {
@@ -1207,6 +1207,7 @@ func validateStorageEngineDeviceList(
 func getDeviceList(aerospikeConf *map[string]interface{}) (*map[string]string, error) {
 	deviceList := map[string]string{}
 
+	// build a map device -> namespace
 	for _, nsConfInterface := range (*aerospikeConf)["namespaces"].([]interface{}) {
 		nsConf := nsConfInterface.(map[string]interface{})
 		namespace := nsConf["name"].(string)
