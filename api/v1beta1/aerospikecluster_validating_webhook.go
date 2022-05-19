@@ -1037,10 +1037,6 @@ func validateNsConfUpdate(
 
 	newNsConfList := newConf["namespaces"].([]interface{})
 
-	// deviceList stores used devices in existing namespaces.
-	// Its key is the device and its value is the namespace where the device is used.
-	deviceList := map[string]string{}
-
 	for _, singleConfInterface := range newNsConfList {
 		// Validate new namespaceonf
 		singleConf, ok := singleConfInterface.(map[string]interface{})
@@ -1051,6 +1047,9 @@ func validateNsConfUpdate(
 		}
 
 		// Validate new namespace conf from old namespace conf. Few filds cannot be updated
+		/*
+			var found bool
+		*/
 		oldNsConfList := oldConf["namespaces"].([]interface{})
 
 		for _, oldSingleConfInterface := range oldNsConfList {
@@ -1063,17 +1062,11 @@ func validateNsConfUpdate(
 				)
 			}
 
-			// Keep track of devices referenced in existing namespaces.
-			oldConfStorage := oldSingleConf["storage-engine"].(map[string]interface{})
-			oldConfDevices := oldConfStorage["devices"].([]string)
-			for _, device := range oldConfDevices {
-				_, exists := deviceList[device]
-				if !exists {
-					deviceList[device] = oldSingleConf["name"].(string)
-				}
-			}
-
 			if singleConf["name"] == oldSingleConf["name"] {
+				/*
+					found = true
+				*/
+
 				// replication-factor update not allowed
 				if isValueUpdated(
 					oldSingleConf, singleConf, "replication-factor",
@@ -1107,37 +1100,133 @@ func validateNsConfUpdate(
 						oldSingleConf, singleConf,
 					)
 				}
-				err := validateStorageEngineConfiguration(oldStorage, storage, singleConf["name"].(string))
-				if ok1 && ok2 && err != nil {
-					return fmt.Errorf("%v", err)
+				if ok1 && ok2 && !reflect.DeepEqual(storage, oldStorage) {
+					/*
+						return fmt.Errorf(
+							"storage-engine config cannot be changed. Old namespace config %v, new namespace config %v",
+							oldSingleConf, singleConf,
+						)
+					*/
+					oldStorageEngineConf := oldStorage.(map[string]interface{})
+					newStorageEngineConf := storage.(map[string]interface{})
+					err := validateStorageEngineConfUpdate(&oldStorageEngineConf, &newStorageEngineConf, singleConf["name"].(string))
+					if err != nil {
+						return fmt.Errorf("%v", err)
+					}
 				}
-			}
-		}
-		// Criteo enhance: allow addition of new persistent namespaces and new devices to existing namespace
-		// Cannot add new persistent namespaces.
-		if !isInMemoryNamespace(singleConf) {
-			// Check if the device list of the namespace exists in the deviceList map
-			// Device does not exists -> Add it to the deviceList
-			// Device already exists and not used by the same namespace -> Return an error as it is not allowed to use an already used device
-			newNsStorage := singleConf["storage-engine"].(map[string]interface{})
-			newNsDevices := newNsStorage["devices"].([]string)
-			for _, newDevice := range newNsDevices {
-				namespace, exists := deviceList[newDevice]
-				if exists && namespace != singleConf["name"].(string) {
-					return fmt.Errorf(
-						"device %s is already being used in the namespace %s",
-						newDevice, namespace,
-					)
-				}
-				// The device of the new namespace does not exists in the deviceList.
-				// We add entry for the new device to keep track of the devices (Use case: addition of multiple ns)
-				deviceList[newDevice] = singleConf["name"].(string)
+
 			}
 		}
 
+		// Cannot add new persistent namespaces.
+		/* Allow addition of persistent namespaces
+		if !found && !isInMemoryNamespace(singleConf) {
+			return fmt.Errorf(
+				"new persistent storage namespace %s cannot be added. Old namespace list %v, new namespace list %v",
+				singleConf["name"], oldNsConfList, newNsConfList,
+			)
+		}
+		*/
 	}
+
+	err := validateStorageEngineDeviceList(&oldConf, &newConf)
+	if err != nil {
+		return fmt.Errorf("%v", err)
+	}
+
 	// Check for namespace name len
 	return nil
+}
+
+// validateStorageEngineConfUpdate returns an error if any key is updated except devices key
+func validateStorageEngineConfUpdate(
+	oldStorage *map[string]interface{}, newStorage *map[string]interface{}, namespace string,
+) error {
+	for key, oldValue := range *oldStorage {
+		if key != "devices" {
+			newValue, exists := (*newStorage)[key]
+			if !exists || !reflect.DeepEqual(oldValue, newValue) {
+				return fmt.Errorf(
+					"%s of storage-engine cannot be changed (namespace=%s)", key, namespace,
+				)
+			}
+		}
+	}
+
+	for key := range *newStorage {
+		if key != "devices" {
+			_, exists := (*oldStorage)[key]
+			if !exists {
+				return fmt.Errorf(
+					"%s of storage-engine cannot be changed (namespace=%s)", key, namespace,
+				)
+			}
+		}
+	}
+
+	return nil
+}
+
+func validateStorageEngineDeviceList(
+	oldConf *map[string]interface{}, newConf *map[string]interface{},
+) error {
+	newConfDeviceList, err := getDeviceList(newConf)
+	if err != nil {
+		return err
+	}
+
+	oldConfDeviceList, err := getDeviceList(oldConf)
+	if err != nil {
+		return err
+	}
+
+	for device, newNamespace := range *newConfDeviceList {
+		oldNamespace, exists := (*oldConfDeviceList)[device]
+		if exists && oldNamespace != newNamespace {
+			return fmt.Errorf(
+				"device %s is being reallocated from namespace %s to namespace %s without being cleaned-up first",
+				device, oldNamespace, newNamespace,
+			)
+		}
+	}
+
+	for device, oldNamespace := range *oldConfDeviceList {
+		_, exists := (*newConfDeviceList)[device]
+		if !exists {
+			return fmt.Errorf(
+				"device %s is being removed from namespace %s. Operation not yet supported by the operator",
+				device, oldNamespace,
+			)
+		}
+	}
+
+	return nil
+}
+
+// getDeviceList returns an association device->namespace for all devices referenced in persistent namespaces
+func getDeviceList(aerospikeConf *map[string]interface{}) (*map[string]string, error) {
+	deviceList := map[string]string{}
+
+	for _, nsConfInterface := range (*aerospikeConf)["namespaces"].([]interface{}) {
+		nsConf := nsConfInterface.(map[string]interface{})
+		namespace := nsConf["name"].(string)
+		storage := nsConf["storage-engine"].(map[string]interface{})
+		devices := storage["devices"].([]string)
+
+		for _, device := range devices {
+			previousNamespace, exists := deviceList[device]
+			if exists {
+				return nil, fmt.Errorf(
+					"device %s is already being referenced in multiple namespaces (%s, %s)",
+					device, previousNamespace, namespace,
+				)
+			} else {
+				deviceList[device] = namespace
+			}
+		}
+	}
+
+	return &deviceList, nil
 }
 
 func validateAerospikeConfigSchema(
@@ -1445,56 +1534,5 @@ func ValidateAerospikeObjectMeta(aerospikeObjectMeta *AerospikeObjectMeta) error
 		}
 
 	}
-	return nil
-}
-
-// validateStorageEngineConfiguration returns an error if:
-// -) the type of storage is not the same for old and new storage configuration.
-// -) new devices have been deleted from the new storage configuration.
-// -) new devices are used more than once in the same namespace.
-func validateStorageEngineConfiguration(
-	oldStorage interface{}, newStorage interface{},
-	namespace string,
-) error {
-	oldStorageToMap := oldStorage.(map[string]interface{})
-	newStoragetoMap := newStorage.(map[string]interface{})
-
-	oldStorageType := oldStorageToMap["type"].(string)
-	newStorageType := newStoragetoMap["type"].(string)
-
-	if oldStorageType != newStorageType {
-		return fmt.Errorf(
-			"type of storage-engine cannot be changed. Old type %s, new type %s",
-			oldStorageType, newStorageType,
-		)
-	}
-
-	oldStorageDevices := oldStorageToMap["devices"].([]string)
-	newStorageDevices := newStoragetoMap["devices"].([]string)
-
-	// Store new devices to a map(key=device, value=number of time the device exists in the namespace).
-	newDeviceList := map[string]int{}
-	for _, newDevice := range newStorageDevices {
-		newDeviceList[newDevice] = newDeviceList[newDevice] + 1
-		// If the device exists more than 1 time, it means that it's using the same device twice in the same namespace.
-		if newDeviceList[newDevice] > 1 {
-			return fmt.Errorf(
-				"device %s is already being used by the same namespace %s",
-				newDevice, namespace,
-			)
-		}
-	}
-
-	for _, oldDevice := range oldStorageDevices {
-		// If an old device is not found in the new device list, it means it's been deleted.
-		// The deletion of a device is an operation not supported yet.
-		if _, found := newDeviceList[oldDevice]; !found {
-			return fmt.Errorf(
-				"device %s cannot be removed from the namespace %s. This operation is not supported yet",
-				oldDevice, namespace,
-			)
-		}
-	}
-
 	return nil
 }

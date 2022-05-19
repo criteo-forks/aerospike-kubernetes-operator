@@ -1,6 +1,7 @@
 package v1beta1
 
 import (
+	"fmt"
 	"testing"
 
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -8,7 +9,6 @@ import (
 
 var aslog = logf.Log.WithName("Test validateNsConfUpdate")
 
-// validateNsConfUpdate should return nil because we are adding a new namespace with unused devices
 func TestAddPesistentNamespaceWithNotUsedDevices(t *testing.T) {
 	oldNsConf := map[string][]string{
 		"namespace-0": {"/dev/nvme1", "/dev/nvme2"},
@@ -22,12 +22,19 @@ func TestAddPesistentNamespaceWithNotUsedDevices(t *testing.T) {
 
 	err := validateNsConfUpdate(aslog, &newNamespaceConfig, &oldNamespaceConfig)
 	if err != nil {
-		t.Fatalf("Got error while creating persistent namespace: %v", err)
+		t.Fatalf(
+			"Adding a new namespace with unused devices.\nExpected: nil.\nTest output: %v", err,
+		)
 	}
 }
 
-// validateNsConfUpdate should return an error because we are using an already used device
 func TestAddPesistentNamespaceWithAlreadyUsedDevices(t *testing.T) {
+	device, previousNamespace, namespace := "/dev/nvme1", "namespace-0", "new-namespace"
+	expectedResult := fmt.Sprintf(
+		"device %s is already being referenced in multiple namespaces (%s, %s)",
+		device, previousNamespace, namespace,
+	)
+
 	oldNsConf := map[string][]string{
 		"namespace-0": {"/dev/nvme1", "/dev/nvme2"},
 	}
@@ -40,11 +47,13 @@ func TestAddPesistentNamespaceWithAlreadyUsedDevices(t *testing.T) {
 
 	err := validateNsConfUpdate(aslog, &newNamespaceConfig, &oldNamespaceConfig)
 	if err == nil {
-		t.Fatalf("Got error while creating persistent namespace: %v", err)
+		t.Fatalf(
+			"Adding namespace with already used devices.\nExpected: %s.\nTest output: %v",
+			expectedResult, err,
+		)
 	}
 }
 
-// validateNsConfUpdate should return nil because we are adding multiple namespaces with unused devices
 func TestAddMultiplePesistentNamespacesWithNotUsedDevices(t *testing.T) {
 	oldNsConf := map[string][]string{
 		"namespace-0": {"/dev/nvme1", "/dev/nvme2"},
@@ -59,12 +68,19 @@ func TestAddMultiplePesistentNamespacesWithNotUsedDevices(t *testing.T) {
 
 	err := validateNsConfUpdate(aslog, &newNamespaceConfig, &oldNamespaceConfig)
 	if err != nil {
-		t.Fatalf("Got error while creating persistent namespace: %v", err)
+		t.Fatalf(
+			"Adding multiple namespaces with unused devices.\nExpected: nil.\nTest output: %v", err,
+		)
 	}
 }
 
-// validateNsConfUpdate should return an error because we are adding multiple namespaces with already used devices
 func TestAddMultiplePesistentNamespacesWithAlreadyUsedDevices(t *testing.T) {
+	device, previousNamespace, namespace := "/dev/nvme3", "new-namespace-0", "new-namespace-1"
+	expectedResult := fmt.Sprintf(
+		"device %s is already being referenced in multiple namespaces (%s, %s)",
+		device, previousNamespace, namespace,
+	)
+
 	oldNsConf := map[string][]string{
 		"namespace-0": {"/dev/nvme1", "/dev/nvme2"},
 	}
@@ -78,11 +94,13 @@ func TestAddMultiplePesistentNamespacesWithAlreadyUsedDevices(t *testing.T) {
 
 	err := validateNsConfUpdate(aslog, &newNamespaceConfig, &oldNamespaceConfig)
 	if err == nil {
-		t.Fatalf("Got error while creating persistent namespace: %v", err)
+		t.Fatalf(
+			"Adding multiple namespaces with already used devices.\nExpected: %s.\nTest output: %v",
+			expectedResult, err,
+		)
 	}
 }
 
-// validateNsConfUpdate should return nil because we are adding unused devices to an existing namespace
 func TestAddDevicesToExistantNamespace(t *testing.T) {
 	oldNsConf := map[string][]string{
 		"namespace-0":     {"/dev/nvme1", "/dev/nvme2"},
@@ -100,12 +118,19 @@ func TestAddDevicesToExistantNamespace(t *testing.T) {
 
 	err := validateNsConfUpdate(aslog, &newNamespaceConfig, &oldNamespaceConfig)
 	if err != nil {
-		t.Fatalf("Got error while creating persistent namespace: %v", err)
+		t.Fatalf(
+			"Adding unused devices to an existing namespace.\nExpected: nil.\nTest output: %v", err,
+		)
 	}
 }
 
-// validateNsConfUpdate should return an error because we are adding used devices by another namespace to an existing namespace
 func TestAddUsedDeviceByAnotherNamespaceToExistantNamespace(t *testing.T) {
+	device, previousNamespace, namespace := "/dev/nvme1", "namespace-0", "new-namespace-0"
+	expectedResult := fmt.Sprintf(
+		"device %s is already being referenced in multiple namespaces (%s, %s)",
+		device, previousNamespace, namespace,
+	)
+
 	oldNsConf := map[string][]string{
 		"namespace-0":     {"/dev/nvme1", "/dev/nvme2"},
 		"new-namespace-0": {"/dev/nvme3", "/dev/nvme4"},
@@ -122,12 +147,20 @@ func TestAddUsedDeviceByAnotherNamespaceToExistantNamespace(t *testing.T) {
 
 	err := validateNsConfUpdate(aslog, &newNamespaceConfig, &oldNamespaceConfig)
 	if err == nil {
-		t.Fatalf("Got error while creating persistent namespace: %v", err)
+		t.Fatalf(
+			"Adding used devices by another namespace to an existing namespace.\nExpected: %s.\nTest output: %v",
+			expectedResult, err,
+		)
 	}
 }
 
-// validateNsConfUpdate should return an error because we are adding used devices by same namespace to an existing namespace
 func TestAddUsedDeviceBySameNamespaceToExistantNamespace(t *testing.T) {
+	device, previousNamespace, namespace := "/dev/nvme3", "new-namespace-0", "new-namespace-0"
+	expectedResult := fmt.Sprintf(
+		"device %s is already being referenced in multiple namespaces (%s, %s)",
+		device, previousNamespace, namespace,
+	)
+
 	oldNsConf := map[string][]string{
 		"namespace-0":     {"/dev/nvme1", "/dev/nvme2"},
 		"new-namespace-0": {"/dev/nvme3", "/dev/nvme4"},
@@ -144,11 +177,13 @@ func TestAddUsedDeviceBySameNamespaceToExistantNamespace(t *testing.T) {
 
 	err := validateNsConfUpdate(aslog, &newNamespaceConfig, &oldNamespaceConfig)
 	if err == nil {
-		t.Fatalf("Got error while creating persistent namespace: %v", err)
+		t.Fatalf(
+			"Adding used devices by same namespace to an existing namespace.\nExpected: %s.\nTest output: %v",
+			expectedResult, err,
+		)
 	}
 }
 
-// validateNsConfUpdate should return nil because we are adding unused devices to an existing namespace
 func TestAddDevicesToMultipleExistantNamespaces(t *testing.T) {
 	oldNsConf := map[string][]string{
 		"namespace-0":     {"/dev/nvme1", "/dev/nvme2"},
@@ -171,14 +206,22 @@ func TestAddDevicesToMultipleExistantNamespaces(t *testing.T) {
 
 	err := validateNsConfUpdate(aslog, &newNamespaceConfig, &oldNamespaceConfig)
 	if err != nil {
-		t.Fatalf("Got error while creating persistent namespace: %v", err)
+		t.Fatalf(
+			"Adding unused devices to an existing namespaces.\nExpected: nil.\nTest output: %v",
+			err,
+		)
 	}
 }
 
-// validateNsConfUpdate should return an error because we are adding used devices to an existing namespace
 func TestAddUsedDeviceToMultipleExistantNamespace(t *testing.T) {
+	device, previousNamespace, namespace := "/dev/nvme5", "new-namespace-0", "new-namespace-1"
+	expectedResult := fmt.Sprintf(
+		"device %s is already being referenced in multiple namespaces (%s, %s)",
+		device, previousNamespace, namespace,
+	)
+
 	oldNsConf := map[string][]string{
-		"namespace-0":     {},
+		"namespace-0":     {"/dev/nvme1", "/dev/nvme2"},
 		"new-namespace-0": {"/dev/nvme3", "/dev/nvme4"},
 		"new-namespace-1": {"/dev/nvme7", "/dev/nvme8"},
 	}
@@ -198,83 +241,92 @@ func TestAddUsedDeviceToMultipleExistantNamespace(t *testing.T) {
 
 	err := validateNsConfUpdate(aslog, &newNamespaceConfig, &oldNamespaceConfig)
 	if err == nil {
-		t.Fatalf("Got error while creating persistent namespace: %v", err)
+		t.Fatalf(
+			"Adding used devices to an existing namespace.\nExpected: %s.\nTest output: %v",
+			expectedResult, err,
+		)
 	}
 }
 
-// validateStorageConfiguration should return nil because we are adding unused devices and keeping the same type.
-func TestValidateStorageEngineConfiguration(t *testing.T) {
-	oldStorage := map[string]interface{}{
-		"type":    "device",
-		"devices": []string{"/dev/nvme1", "/dev/nvme2"},
+func TestUseDeletedDevice(t *testing.T) {
+	device, oldNamespace, newNamespace := "/dev/nvme1", "namespace-0", "new-namespace-0"
+	expectedResult := fmt.Sprintf(
+		"device %s is being reallocated from namespace %s to namespace %s without being cleaned-up first",
+		device, oldNamespace, newNamespace,
+	)
+
+	oldNsConf := map[string][]string{
+		"namespace-0":     {"/dev/nvme1", "/dev/nvme2"},
+		"new-namespace-0": {"/dev/nvme3", "/dev/nvme4"},
 	}
-	newStorage := map[string]interface{}{
-		"type": "device",
-		"devices": []string{
-			"/dev/nvme1", "/dev/nvme2",
-			"/dev/nvme3", "/dev/nvme4",
+	newNsConf := map[string][]string{
+		"namespace-0": {"/dev/nvme2"},
+		"new-namespace-0": {
+			"/dev/nvme3", "/dev/nvme4", "/dev/nvme1", // <- Using deleted device "/dev/nvme1"
 		},
 	}
 
-	err := validateStorageEngineConfiguration(oldStorage, newStorage, "test-namespace")
-	if err != nil {
-		t.Fatalf("Got error while validating storage configuration: %v", err)
+	oldNamespaceConfig, newNamespaceConfig := prepareNsConfigurations(oldNsConf, newNsConf)
+
+	err := validateNsConfUpdate(aslog, &newNamespaceConfig, &oldNamespaceConfig)
+	if err == nil {
+		t.Fatalf(
+			"Adding devices deleted from an existing namespace.\nExpected: %s.\nTest output: %v",
+			expectedResult, err,
+		)
 	}
 }
 
-// validateStorageConfiguration should return an error because we are changing the type of the storage.
-func TestValidateStorageEngineConfigurationByChangingStorageType(t *testing.T) {
-	oldStorage := map[string]interface{}{
-		"type":    "device",
-		"devices": []string{"/dev/nvme1", "/dev/nvme2"},
+func TestDeleteDeviceFromNamespace(t *testing.T) {
+	device, oldNamespace := "/dev/nvme1", "namespace-0"
+	expectedResult := fmt.Sprintf(
+		"device %s is being removed from namespace %s. Operation not yet supported by the operator",
+		device, oldNamespace,
+	)
+
+	oldNsConf := map[string][]string{
+		"namespace-0":     {"/dev/nvme1", "/dev/nvme2"},
+		"new-namespace-0": {"/dev/nvme3", "/dev/nvme4"},
 	}
-	newStorage := map[string]interface{}{
-		"type":    "memory",
-		"devices": []string{},
+	newNsConf := map[string][]string{
+		"namespace-0":     {"/dev/nvme2"},
+		"new-namespace-0": {"/dev/nvme3", "/dev/nvme4"},
 	}
 
-	err := validateStorageEngineConfiguration(oldStorage, newStorage, "test-namespace")
+	oldNamespaceConfig, newNamespaceConfig := prepareNsConfigurations(oldNsConf, newNsConf)
+
+	err := validateNsConfUpdate(aslog, &newNamespaceConfig, &oldNamespaceConfig)
 	if err == nil {
-		t.Fatalf("Got error while validating storage configuration: %v", err)
+		t.Fatalf(
+			"Deleting device from a namespace.\nExpected: %s.\nTest output: %v",
+			expectedResult, err,
+		)
 	}
 }
 
-// validateStorageConfiguration should return an error because we are using a same device.
-func TestValidateStorageEngineConfigurationByUsingUsedDevice(t *testing.T) {
-	oldStorage := map[string]interface{}{
-		"type":    "device",
-		"devices": []string{"/dev/nvme1", "/dev/nvme2"},
+func TestChangeStorageEngineType(t *testing.T) {
+	key, namespace := "type", "namespace-0"
+	expectedResult := fmt.Sprintf(
+		"%s of storage-engine cannot be changed (namespace=%s)", key, namespace,
+	)
+
+	oldNsConf := map[string][]string{
+		"namespace-0":     {"/dev/nvme1", "/dev/nvme2"},
+		"new-namespace-0": {"/dev/nvme3", "/dev/nvme4"},
 	}
-	newStorage := map[string]interface{}{
-		"type": "device",
-		"devices": []string{
-			"/dev/nvme1", "/dev/nvme2",
-			"/dev/nvme1", "/dev/nvme3", // <- Using same device "/dev/nvme1" twice
-		},
+	newNsConf := map[string][]string{
+		"namespace-0":     {},
+		"new-namespace-0": {"/dev/nvme3", "/dev/nvme4"},
 	}
 
-	err := validateStorageEngineConfiguration(oldStorage, newStorage, "test-namespace")
+	oldNamespaceConfig, newNamespaceConfig := prepareNsConfigurations(oldNsConf, newNsConf)
+
+	err := validateNsConfUpdate(aslog, &newNamespaceConfig, &oldNamespaceConfig)
 	if err == nil {
-		t.Fatalf("Got error while validating storage configuration: %v", err)
-	}
-}
-
-// validateStorageConfiguration should return an error because we are deleting a device.
-func TestValidateStorageEngineConfigurationByDeletingDevice(t *testing.T) {
-	oldStorage := map[string]interface{}{
-		"type":    "device",
-		"devices": []string{"/dev/nvme1", "/dev/nvme2"},
-	}
-	newStorage := map[string]interface{}{
-		"type": "device",
-		"devices": []string{
-			"/dev/nvme2", "/dev/nvme3", "/dev/nvme4", // <- Deleting device "/dev/nvme1"
-		},
-	}
-
-	err := validateStorageEngineConfiguration(oldStorage, newStorage, "test-namespace")
-	if err == nil {
-		t.Fatalf("Got error while validating storage configuration: %v", err)
+		t.Fatalf(
+			"Changing type of storage-engine for a namespace.\nExpected: %s.\nTest output: %v",
+			expectedResult, err,
+		)
 	}
 }
 
@@ -337,19 +389,43 @@ func namespaceAlreadyExists(nsConfList []interface{}, namespace string) (bool, i
 	return false, -1
 }
 
+func addInMemoryNamespace(namespace string, conf *AerospikeConfigSpec) {
+	config := conf.Value
+	nsConfList := config["namespaces"].([]interface{})
+
+	newNamespace := map[string]interface{}{
+		"name": namespace,
+		"storage-engine": map[string]interface{}{
+			"type":    "memory",
+			"devices": []string{},
+		},
+	}
+	nsConfList = append(nsConfList, newNamespace)
+
+	conf.Value["namespaces"] = nsConfList
+}
+
 func prepareNsConfigurations(oldNamespaceConf map[string][]string, newNamespaceConf map[string][]string) (AerospikeConfigSpec, AerospikeConfigSpec) {
 	oldNamespaceConfig := buildEmptyNsConf()
 	newNamespaceConfig := buildEmptyNsConf()
 
 	for namespace, deviceList := range oldNamespaceConf {
-		for _, device := range deviceList {
-			addDeviceToPersistentNamesapce(namespace, device, &oldNamespaceConfig)
+		if len(deviceList) == 0 {
+			addInMemoryNamespace(namespace, &oldNamespaceConfig)
+		} else {
+			for _, device := range deviceList {
+				addDeviceToPersistentNamesapce(namespace, device, &oldNamespaceConfig)
+			}
 		}
 	}
 
 	for namespace, deviceList := range newNamespaceConf {
-		for _, device := range deviceList {
-			addDeviceToPersistentNamesapce(namespace, device, &newNamespaceConfig)
+		if len(deviceList) == 0 {
+			addInMemoryNamespace(namespace, &oldNamespaceConfig)
+		} else {
+			for _, device := range deviceList {
+				addDeviceToPersistentNamesapce(namespace, device, &newNamespaceConfig)
+			}
 		}
 	}
 
