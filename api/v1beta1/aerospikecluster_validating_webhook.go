@@ -1107,10 +1107,9 @@ func validateNsConfUpdate(
 					newStorageEngineConf := storage.(map[string]interface{})
 					err := validateStorageEngineConfUpdate(&oldStorageEngineConf, &newStorageEngineConf, singleConf["name"].(string))
 					if err != nil {
-						return fmt.Errorf("%v", err)
+						return err
 					}
 				}
-
 			}
 		}
 
@@ -1127,7 +1126,7 @@ func validateNsConfUpdate(
 
 	err := validateStorageEngineDeviceList(&oldConf, &newConf)
 	if err != nil {
-		return fmt.Errorf("%v", err)
+		return err
 	}
 
 	// Check for namespace name len
