@@ -8,7 +8,20 @@ replicas: 3
 ## Aerospike server docker image
 image:
   repository: aerospike/aerospike-server-enterprise
+<<<<<<< HEAD
   tag: 6.3.0.0
+=======
+  tag: 5.7.0.8
+
+## Custom labels that will be applied on the aerospikecluster resource
+customLabels: {}
+
+## Init image
+initImage:
+  repository: aerospike/aerospike-kubernetes-init
+  tag: 0.0.15
+  # pullPolicy: IfNotPresent
+>>>>>>> e10c6ad (Add custom label to aerospike cluster cr via helm chart)
 
 ## In case the above image is pulled from a registry that requires
 ## authentication, a secret containining credentials can be added
