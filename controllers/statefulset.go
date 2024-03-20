@@ -183,6 +183,7 @@ func (r *SingleClusterReconciler) createSTS(
 							Ports:           ports,
 							Env:             envVarList,
 							VolumeMounts:    getDefaultAerospikeContainerVolumeMounts(),
+							ReadinessProbe:  r.getReadinessProbe(),
 						},
 					},
 
@@ -220,6 +221,53 @@ func (r *SingleClusterReconciler) createSTS(
 	}
 
 	return r.getSTS(rackState)
+}
+
+func (r *SingleClusterReconciler) getReadinessProbe() *corev1.Probe {
+	var readinessPort *int
+
+	if _, tlsPort := asdbv1beta1.GetTLSNameAndPort(r.aeroCluster.Spec.AerospikeConfig, asdbv1beta1.ServicePortName); tlsPort != nil {
+		readinessPort = tlsPort
+	} else {
+		readinessPort = asdbv1beta1.GetServicePort(r.aeroCluster.Spec.AerospikeConfig)
+	}
+
+	return &corev1.Probe{
+		Handler: corev1.Handler{
+			TCPSocket: &corev1.TCPSocketAction{
+				Port: intstr.IntOrString{
+					Type:   intstr.Int,
+					IntVal: int32(*readinessPort),
+				},
+			},
+		},
+		InitialDelaySeconds: 2,
+		PeriodSeconds:       5,
+	}
+}
+
+func (r *SingleClusterReconciler) isReadinessProbeUpdated(pod *corev1.Pod) bool {
+	for idx := range pod.Spec.Containers {
+		container := &pod.Spec.Containers[idx]
+
+		if container.Name != asdbv1beta1.AerospikeServerContainerName {
+			continue
+		}
+
+		// Upstream returns "false" here; this means the probe is not going to be installed
+		// until an upgrade that requires a *cold* restart of the STS takes place. We'd rather
+		// want to force this cold restart to happen so that the probe is installed
+		if container.ReadinessProbe == nil {
+			return true
+		}
+
+		if container.ReadinessProbe.TCPSocket != nil &&
+			container.ReadinessProbe.TCPSocket.String() != r.getReadinessProbe().TCPSocket.String() {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (r *SingleClusterReconciler) deleteSTS(st *appsv1.StatefulSet) error {
@@ -861,6 +909,9 @@ func (r *SingleClusterReconciler) updateSTS(
 	// Container.
 	r.updateContainerImages(statefulSet)
 
+	// Updates the readiness probe TCP Port if changed for the aerospike server container
+	r.updateReadinessProbe(statefulSet)
+
 	// This should be called before updating storage
 	r.initializeSTSStorage(statefulSet, rackState)
 
@@ -1326,6 +1377,21 @@ func (r *SingleClusterReconciler) getClusterSTSList() (
 	}
 
 	return statefulSetList, nil
+}
+
+func (r *SingleClusterReconciler) updateReadinessProbe(statefulSet *appsv1.StatefulSet) {
+	for idx := range statefulSet.Spec.Template.Spec.Containers {
+		container := &statefulSet.Spec.Template.Spec.Containers[idx]
+
+		if container.Name != asdbv1beta1.AerospikeServerContainerName {
+			continue
+		}
+
+		r.Log.Info("upgrading readiness probe")
+		container.ReadinessProbe = r.getReadinessProbe()
+
+		break
+	}
 }
 
 // updateContainerImages updates all container images to match the Aerospike
