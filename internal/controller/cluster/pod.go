@@ -12,6 +12,8 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -266,7 +268,7 @@ func (r *SingleClusterReconciler) rollingRestartPods(
 	if len(failedPods) != 0 {
 		r.Log.Info("Restart failed pods", "pods", getPodNames(failedPods))
 
-		if res := r.restartPods(rackState, failedPods, restartTypeMap); !res.IsSuccess {
+		if res := r.restartPods(rackState, failedPods, restartTypeMap, true); !res.IsSuccess {
 			return res
 		}
 	}
@@ -300,7 +302,7 @@ func (r *SingleClusterReconciler) rollingRestartPods(
 			}
 		}
 
-		if res := r.restartPods(rackState, activePods, restartTypeMap); !res.IsSuccess {
+		if res := r.restartPods(rackState, activePods, restartTypeMap, false); !res.IsSuccess {
 			return res
 		}
 
@@ -414,7 +416,7 @@ func (r *SingleClusterReconciler) restartASDOrUpdateAerospikeConf(podName string
 }
 
 func (r *SingleClusterReconciler) restartPods(
-	rackState *RackState, podsToRestart []*corev1.Pod, restartTypeMap map[string]RestartType,
+	rackState *RackState, podsToRestart []*corev1.Pod, restartTypeMap map[string]RestartType, bypassPdb bool,
 ) common.ReconcileResult {
 	// For each block volume removed from a namespace, pod status dirtyVolumes is appended with that volume name.
 	// For each file removed from a namespace, it is deleted right away.
@@ -425,6 +427,7 @@ func (r *SingleClusterReconciler) restartPods(
 	restartedPods := make([]*corev1.Pod, 0, len(podsToRestart))
 	restartedPodNames := make([]string, 0, len(podsToRestart))
 	restartedASDPodNames := make([]string, 0, len(podsToRestart))
+	failedEvictedPods := make([]*corev1.Pod, 0)
 
 	for idx := range podsToRestart {
 		pod := podsToRestart[idx]
@@ -440,22 +443,45 @@ func (r *SingleClusterReconciler) restartPods(
 
 			restartedASDPodNames = append(restartedASDPodNames, pod.Name)
 		} else if restartType == podRestart {
-			if r.isLocalPVCDeletionRequired(rackState, pod) {
-				if err := r.deleteLocalPVCs(rackState, pod); err != nil {
+
+			if r.isLocalPVCDeletionRequired(rackState, pod) || bypassPdb {
+				if r.isLocalPVCDeletionRequired(rackState, pod) {
+					if err := r.deleteLocalPVCs(rackState, pod); err != nil {
+						return common.ReconcileError(err)
+					}
+				}
+
+				if err := r.Client.Delete(context.TODO(), pod); err != nil {
+					r.Log.Error(err, "Failed to delete pod")
 					return common.ReconcileError(err)
 				}
-			}
 
-			if err := r.Client.Delete(context.TODO(), pod); err != nil {
-				r.Log.Error(err, "Failed to delete pod")
-				return common.ReconcileError(err)
+			} else {
+				if err := r.KubeClient.PolicyV1().Evictions(pod.Namespace).Evict(context.TODO(),
+					&policyv1.Eviction{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      pod.Name,
+							Namespace: pod.Namespace,
+						},
+					}); err != nil {
+					r.Log.Error(err, fmt.Sprintf("Not evictable pod %s in ns %s. Will QuiesceUndo and retry in 30sec. Error: %s", pod.Name, pod.Namespace, err.Error()))
+					// in case of error during the eviction, unquiesce the node since it has been quiesced.
+					failedEvictedPods = append(failedEvictedPods, pod)
+					continue
+				}
 			}
-
 			restartedPods = append(restartedPods, pod)
 			restartedPodNames = append(restartedPodNames, pod.Name)
 
 			r.Log.V(1).Info("Pod deleted", "podName", pod.Name)
 		}
+	}
+
+	if len(failedEvictedPods) > 0 {
+		if err := r.quiesceUndoPods(r.getClientPolicy(), failedEvictedPods); err != nil {
+			r.Log.Error(err, "Unexpected error during quiesce-undo command")
+		}
+		return common.ReconcileRequeueAfter(30)
 	}
 
 	if err := r.updateOperationStatus(restartedASDPodNames, restartedPodNames); err != nil {
@@ -651,6 +677,8 @@ func (r *SingleClusterReconciler) deletePodAndEnsureImageUpdated(
 		return common.ReconcileError(err)
 	}
 
+	failedEvictedPods := make([]*corev1.Pod, 0)
+
 	// Delete pods
 	for _, pod := range podsToUpdate {
 		if r.isLocalPVCDeletionRequired(rackState, pod) {
@@ -659,8 +687,17 @@ func (r *SingleClusterReconciler) deletePodAndEnsureImageUpdated(
 			}
 		}
 
-		if err := r.Client.Delete(context.TODO(), pod); err != nil {
-			return common.ReconcileError(err)
+		if err := r.KubeClient.PolicyV1().Evictions(pod.Namespace).Evict(context.TODO(),
+			&policyv1.Eviction{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      pod.Name,
+					Namespace: pod.Namespace,
+				},
+			}); err != nil {
+			r.Log.Error(err, fmt.Sprintf("Not evictable pod %s in ns %s. Will QuiesceUndo and retry. Error: %s", pod.Name, pod.Namespace, err.Error()))
+			// in case of error during the eviction, unquiesce the node since it has been quiesced.
+			failedEvictedPods = append(failedEvictedPods, pod)
+			continue
 		}
 
 		r.Log.V(1).Info("Pod deleted", "podName", pod.Name)
@@ -668,6 +705,12 @@ func (r *SingleClusterReconciler) deletePodAndEnsureImageUpdated(
 			r.aeroCluster, corev1.EventTypeNormal, "PodWaitUpdate",
 			"[rack-%d] Waiting to update Pod %s", rackState.Rack.ID, pod.Name,
 		)
+	}
+
+	if len(failedEvictedPods) > 0 {
+		if err := r.quiesceUndoPods(r.getClientPolicy(), failedEvictedPods); err != nil {
+			r.Log.Error(err, "Unexpected error during quiesce-undo command")
+		}
 	}
 
 	return r.ensurePodsImageUpdated(podsToUpdate)
