@@ -11,6 +11,8 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1beta1 "k8s.io/api/policy/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -162,7 +164,7 @@ func (r *SingleClusterReconciler) rollingRestartPods(
 	if len(failedPods) != 0 {
 		r.Log.Info("Restart failed pods", "pods", getPodNames(failedPods))
 
-		if res := r.restartPods(rackState, failedPods, restartTypeMap); !res.isSuccess {
+		if res := r.restartPods(rackState, failedPods, restartTypeMap, true); !res.isSuccess {
 			return res
 		}
 	}
@@ -174,7 +176,7 @@ func (r *SingleClusterReconciler) rollingRestartPods(
 			return res
 		}
 
-		if res := r.restartPods(rackState, activePods, restartTypeMap); !res.isSuccess {
+		if res := r.restartPods(rackState, activePods, restartTypeMap, false); !res.isSuccess {
 			return res
 		}
 	}
@@ -246,7 +248,7 @@ func (r *SingleClusterReconciler) restartASDInPod(
 }
 
 func (r *SingleClusterReconciler) restartPods(
-	rackState *RackState, podsToRestart []*corev1.Pod, restartTypeMap map[string]RestartType,
+	rackState *RackState, podsToRestart []*corev1.Pod, restartTypeMap map[string]RestartType, bypassPdb bool,
 ) reconcileResult {
 	// For each block volume removed from a namespace, pod status dirtyVolumes is appended with that volume name.
 	// For each file removed from a namespace, it is deleted right away.
@@ -266,11 +268,22 @@ func (r *SingleClusterReconciler) restartPods(
 			if err := r.restartASDInPod(rackState, pod); err == nil {
 				continue
 			}
-		}
-
-		if err := r.Client.Delete(context.TODO(), pod); err != nil {
-			r.Log.Error(err, "Failed to delete pod")
-			return reconcileError(err)
+		} else if bypassPdb {
+			if err := r.Client.Delete(context.TODO(), pod); err != nil {
+				r.Log.Error(err, "Failed to delete pod")
+				return reconcileError(err)
+			}
+		} else {
+			if err := r.KubeClient.CoreV1().Pods(pod.Namespace).Evict(context.TODO(),
+				&policyv1beta1.Eviction{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      pod.Name,
+						Namespace: pod.Namespace,
+					},
+				}); err != nil {
+				r.Log.Error(err, "Failed to evict pod")
+				return reconcileError(err)
+			}
 		}
 
 		restartedPods = append(restartedPods, pod)
