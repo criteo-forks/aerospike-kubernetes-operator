@@ -106,6 +106,7 @@ rules:
   - ""
   resources:
   - pods/exec
+  - pods/eviction
   verbs:
   - create
 - apiGroups:
