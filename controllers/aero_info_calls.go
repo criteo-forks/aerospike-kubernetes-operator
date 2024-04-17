@@ -14,10 +14,13 @@ limitations under the License.
 package controllers
 
 import (
+	"context"
 	"fmt"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	policyv1beta1 "k8s.io/api/policy/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	asdbv1beta1 "github.com/aerospike/aerospike-kubernetes-operator/api/v1beta1"
 	"github.com/aerospike/aerospike-kubernetes-operator/pkg/utils"
@@ -75,6 +78,28 @@ func (r *SingleClusterReconciler) waitForMultipleNodesSafeStopReady(
 		}
 	}
 
+	/*
+	 * Dry run evictions on pods.
+	 * This is to avoid an unecessary quiesce if the eviction fail.
+	 * Still an unquiesce in case of error during real eviction must be considered.
+	 */
+	for _, pod := range pods {
+		if err := r.KubeClient.CoreV1().Pods(pod.Namespace).Evict(context.TODO(),
+			&policyv1beta1.Eviction{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      pod.Name,
+					Namespace: pod.Namespace,
+				},
+				DeleteOptions: &metav1.DeleteOptions{
+					DryRun: []string{metav1.DryRunAll},
+				},
+			}); err != nil {
+
+			r.Log.Info(fmt.Sprintf("Not evictable pod %s in ns %s. Won't quiesce and retry in 30sec.", pod.Name, pod.Namespace))
+			return reconcileRequeueAfter(30)
+		}
+	}
+
 	if err := r.quiescePods(policy, allHostConns, pods, ignorablePods); err != nil {
 		return reconcileError(err)
 	}
@@ -102,6 +127,16 @@ func (r *SingleClusterReconciler) quiescePods(
 	}
 
 	return deployment.InfoQuiesce(r.Log, policy, allHostConns, selectedHostConns, removedNSes)
+}
+
+func (r *SingleClusterReconciler) quiesceUndoPods(policy *as.ClientPolicy, pod *corev1.Pod) error {
+
+	selectedHostConns, err := r.newPodsHostConnWithOption([]corev1.Pod{*pod}, []corev1.Pod{})
+	if err != nil {
+		return err
+	}
+
+	return deployment.InfoQuiesceUndo(r.Log, policy, selectedHostConns)
 }
 
 // TODO: Check only for migration
