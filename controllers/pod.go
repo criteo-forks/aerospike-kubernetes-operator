@@ -281,8 +281,10 @@ func (r *SingleClusterReconciler) restartPods(
 						Namespace: pod.Namespace,
 					},
 				}); err != nil {
-				r.Log.Error(err, "Failed to evict pod")
-				return reconcileError(err)
+				r.Log.Error(err, fmt.Sprintf("Not evictable pod %s in ns %s. QuiesceUndo and retry in 30sec. Error: %s", pod.Name, pod.Namespace, err.Error()))
+				// in case of error during the eviction, unquiesce the node since it has been quiesced.
+				r.quiesceUndoPods(r.getClientPolicy(), pod)
+				return reconcileRequeueAfter(30)
 			}
 		}
 
