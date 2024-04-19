@@ -136,7 +136,34 @@ func (r *SingleClusterReconciler) quiesceUndoPods(policy *as.ClientPolicy, pod *
 		return err
 	}
 
-	return deployment.InfoQuiesceUndo(r.Log, policy, selectedHostConns)
+	/*
+	* HACK: Force a recluster with an empty list of hosts.
+	* Since aerospike-management-lib doesn't expose any "recluster" public function
+	* We are using InfoQuiesce to call "recluster" using an empty list of hosts too apply the Quiesce.
+	 */
+	err = deployment.InfoQuiesceUndo(r.Log, policy, selectedHostConns)
+	if err != nil {
+		if err.Error() == "failed to execute recluster command: no response from principle node" {
+			return r.recluster(r.getClientPolicy())
+		} else {
+			return err
+		}
+	}
+	return nil
+}
+
+/*
+ * HACK: Force a recluster with an empty list of hosts.
+ * Since aerospike-management-lib doesn't expose any "recluster" public function
+ * We are using InfoQuiesce to call "recluster" using an empty list of hosts too apply the Quiesce.
+ */
+func (r *SingleClusterReconciler) recluster(policy *as.ClientPolicy) error {
+
+	allHostConns, err := r.newAllHostConnWithOption([]corev1.Pod{})
+	if err != nil {
+		return err
+	}
+	return r.quiescePods(r.getClientPolicy(), allHostConns, []*corev1.Pod{}, []corev1.Pod{})
 }
 
 // TODO: Check only for migration

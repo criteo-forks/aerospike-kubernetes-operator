@@ -283,7 +283,9 @@ func (r *SingleClusterReconciler) restartPods(
 				}); err != nil {
 				r.Log.Error(err, fmt.Sprintf("Not evictable pod %s in ns %s. QuiesceUndo and retry in 30sec. Error: %s", pod.Name, pod.Namespace, err.Error()))
 				// in case of error during the eviction, unquiesce the node since it has been quiesced.
-				r.quiesceUndoPods(r.getClientPolicy(), pod)
+				if err := r.quiesceUndoPods(r.getClientPolicy(), pod); err != nil {
+					r.Log.Error(err, "Unexpected error during quiesce-undo command")
+				}
 				return reconcileRequeueAfter(30)
 			}
 		}
