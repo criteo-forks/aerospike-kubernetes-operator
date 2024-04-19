@@ -257,6 +257,7 @@ func (r *SingleClusterReconciler) restartPods(
 	}
 
 	restartedPods := make([]*corev1.Pod, 0, len(podsToRestart))
+	failedEvictedPods := make([]*corev1.Pod, 0)
 
 	for idx := range podsToRestart {
 		pod := podsToRestart[idx]
@@ -281,16 +282,23 @@ func (r *SingleClusterReconciler) restartPods(
 						Namespace: pod.Namespace,
 					},
 				}); err != nil {
-				r.Log.Error(err, fmt.Sprintf("Not evictable pod %s in ns %s. QuiesceUndo and retry in 30sec. Error: %s", pod.Name, pod.Namespace, err.Error()))
+				r.Log.Error(err, fmt.Sprintf("Not evictable pod %s in ns %s. Will QuiesceUndo and retry in 30sec. Error: %s", pod.Name, pod.Namespace, err.Error()))
 				// in case of error during the eviction, unquiesce the node since it has been quiesced.
-				r.quiesceUndoPods(r.getClientPolicy(), pod)
-				return reconcileRequeueAfter(30)
+				failedEvictedPods = append(failedEvictedPods, pod)
+				continue
 			}
 		}
 
 		restartedPods = append(restartedPods, pod)
 
 		r.Log.V(1).Info("Pod deleted", "podName", pod.Name)
+	}
+
+	if len(failedEvictedPods) > 0 {
+		if err := r.quiesceUndoPods(r.getClientPolicy(), failedEvictedPods); err != nil {
+			r.Log.Error(err, "Unexpected error during quiesce-undo command")
+		}
+		return reconcileRequeueAfter(30)
 	}
 
 	if len(restartedPods) > 0 {
