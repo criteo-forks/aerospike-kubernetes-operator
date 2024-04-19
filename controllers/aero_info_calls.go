@@ -16,6 +16,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -95,7 +96,7 @@ func (r *SingleClusterReconciler) waitForMultipleNodesSafeStopReady(
 				},
 			}); err != nil {
 
-			r.Log.Info(fmt.Sprintf("Not evictable pod %s in ns %s. Won't quiesce and retry in 30sec.", pod.Name, pod.Namespace))
+			r.Log.Info(fmt.Sprintf("Not evictable pod %s in ns %s. Won't quiesce and retry in 30sec. Error: %s", pod.Name, pod.Namespace, err.Error()))
 			return reconcileRequeueAfter(30)
 		}
 	}
@@ -129,14 +130,45 @@ func (r *SingleClusterReconciler) quiescePods(
 	return deployment.InfoQuiesce(r.Log, policy, allHostConns, selectedHostConns, removedNSes)
 }
 
-func (r *SingleClusterReconciler) quiesceUndoPods(policy *as.ClientPolicy, pod *corev1.Pod) error {
-
-	selectedHostConns, err := r.newPodsHostConnWithOption([]corev1.Pod{*pod}, []corev1.Pod{})
+func (r *SingleClusterReconciler) quiesceUndoPods(policy *as.ClientPolicy, pods []*corev1.Pod) error {
+	arrayPods := make([]corev1.Pod, len(pods), len(pods))
+	for _, pod := range pods {
+		arrayPods = append(arrayPods, *pod)
+	}
+	selectedHostConns, err := r.newPodsHostConnWithOption(arrayPods, []corev1.Pod{})
 	if err != nil {
 		return err
 	}
 
-	return deployment.InfoQuiesceUndo(r.Log, policy, selectedHostConns)
+	/*
+	* HACK: Force a recluster with an empty list of hosts.
+	* Since aerospike-management-lib doesn't expose any "recluster" public function
+	* We are using InfoQuiesce to call "recluster" using an empty list of hosts too apply the QuiesceUndo.
+	 */
+	err = deployment.InfoQuiesceUndo(r.Log, policy, selectedHostConns)
+	if err != nil {
+		// In any case (error or no error), the caller will reconcileRequeueAfter.
+		if strings.Contains(err.Error(), "failed to execute recluster command") {
+			return r.recluster(policy)
+		} else {
+			return err
+		}
+	}
+	return nil
+}
+
+/*
+ * HACK: Force a recluster with an empty list of hosts.
+ * Since aerospike-management-lib doesn't expose any "recluster" public function
+ * We are using InfoQuiesce to call "recluster" using an empty list of hosts too apply the Quiesce.
+ */
+func (r *SingleClusterReconciler) recluster(policy *as.ClientPolicy) error {
+
+	allHostConns, err := r.newAllHostConnWithOption([]corev1.Pod{})
+	if err != nil {
+		return err
+	}
+	return r.quiescePods(policy, allHostConns, []*corev1.Pod{}, []corev1.Pod{})
 }
 
 // TODO: Check only for migration
