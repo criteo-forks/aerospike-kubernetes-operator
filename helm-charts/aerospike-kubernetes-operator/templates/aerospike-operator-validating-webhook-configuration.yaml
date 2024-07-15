@@ -3,7 +3,7 @@ kind: ValidatingWebhookConfiguration
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/aerospike-operator-serving-cert
-  name: aerospike-operator-validating-webhook-configuration
+  name: aerospike-operator-validating-webhook-configuration-{{ .Release.Namespace }}
   labels:
     app: {{ template "aerospike-kubernetes-operator.fullname" . }}
     chart: {{ .Chart.Name }}
@@ -11,6 +11,14 @@ metadata:
 webhooks:
 - admissionReviewVersions:
   - v1
+  namespaceSelector:
+    matchExpressions:
+      - key: kubernetes.io/metadata.name
+        operator: In
+        values:
+        {{- range $value := split "," .Values.watchNamespaces }}
+        - "{{ $value }}"
+        {{- end }}
   clientConfig:
     service:
       name: aerospike-operator-webhook-service
