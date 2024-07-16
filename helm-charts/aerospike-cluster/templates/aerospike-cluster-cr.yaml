@@ -3,10 +3,15 @@ kind: AerospikeCluster
 metadata:
   name: {{ template "aerospike-cluster.commonName" . }}
   namespace: {{ .Release.Namespace }}
+  # finalizer needed to handle pvc deletion when AerospikeCluster is deleted.
+  finalizers:
+    - asdb.aerospike.com/storage-finalizer
   labels:
     app: {{ template "aerospike-cluster.commonName" . }}
     chart: {{ .Chart.Name }}
     release: {{ .Release.Name }}
+    # needed after first ako-3.3.0 reconciliation to allow scale-up
+    aerospike.com/api-version: v1
     {{- with .Values.customLabels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
@@ -14,6 +19,10 @@ metadata:
 spec:
   # Aerospike cluster size
   size: {{ .Values.replicas }}
+
+  # Control PodDisruptionBudget creation for the Aerospike cluster.
+  disablePDB: {{ .Values.disablePDB | default false}}
+  maxUnavailable: {{ if not .Values.disablePDB }}{{ .Values.maxUnavailable }}{{end}}
 
   # Aerospike server docker image
   image: {{ .Values.image.repository | default "aerospike/aerospike-server-enterprise" }}:{{ .Values.image.tag | default "8.1.0.0" }}
@@ -66,14 +75,99 @@ spec:
   {{- end }}
 
   # Aerospike pod spec
-  {{- with .Values.podSpec }}
-  podSpec: {{- toYaml . | nindent 4 }}
-  {{- end }}
-
-  {{- if and .Values.devMode (not .Values.podSpec) }}
   podSpec:
-    multiPodPerHost: true
-  {{- end }}
+    aerospikeContainer:
+      {{- with .Values.podSpec.aerospikeContainer }}
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
+    aerospikeInitContainer:
+      image: {{ .Values.podSpec.aerospikeInitContainer.image }}
+      imageRegistry: {{ .Values.podSpec.aerospikeInitContainer.imageRegistry }}
+      resources:
+        limits:
+          cpu: 500m
+          memory: 1Gi
+        requests:
+          cpu: 500m
+          memory: 1Gi
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+              - key: aerospike.com/cr
+                operator: In
+                values:
+                - {{ .Values.commonName }}
+            topologyKey: {{ .Values.podSpec.affinity.podAntiAffinity.topologyKey }}
+          weight: 100
+    hostNetwork: {{ .Values.podSpec.hostNetwork }}
+    metadata:
+      labels:
+        {{- if .Values.podSpec.metadata }}
+        {{- if .Values.podSpec.metadata.labels}}
+        {{- range $key, $val := .Values.podSpec.metadata.labels }}
+        {{ $key }}: {{ $val | quote }}
+        {{- end }}
+        {{- end }}
+        {{- end}}
+    sidecars:
+    - args:
+      - |
+        export METRIC_LABELS="pod=\"$MY_POD_NAME\", host_ip=\"$MY_HOST_IP\""
+        /docker-entrypoint.sh aerospike-prometheus-exporter --config /etc/aerospike-prometheus-exporter/ape.toml;
+      command:
+      - /bin/sh
+      - -c
+      env:
+      - name: AGENT_LOG_LEVEL
+        value: debug
+      - name: AS_HOST
+        value: localhost
+      - name: AS_PORT
+        value: "4333"
+      - name: AS_ROOT_CA
+        value: /etc/aerospike/ca/root_ca.pem
+      - name: AS_NODE_TLS_NAME
+        valueFrom:
+          configMapKeyRef:
+            key: tls-name
+            name: prometheus-exporter-configmap
+      - name: AS_AUTH_USER
+        value: {{ .Values.podSpec.sidecars.aerospikePrometheusExporter.user }}
+      - name: AS_AUTH_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            key: password
+            name: {{ .Values.podSpec.sidecars.aerospikePrometheusExporter.passwordSecret }}
+      - name: MY_POD_NAME
+        valueFrom:
+          fieldRef:
+            fieldPath: metadata.name
+      - name: MY_HOST_IP
+        valueFrom:
+          fieldRef:
+            fieldPath: status.hostIP
+      image: {{ .Values.podSpec.sidecars.aerospikePrometheusExporter.image }}
+      name: aerospike-prometheus-exporter
+      ports:
+      - containerPort: {{ .Values.podSpec.sidecars.aerospikePrometheusExporter.port }}
+        {{- if .Values.podSpec.hostNetwork }}
+        hostPort: {{ .Values.podSpec.sidecars.aerospikePrometheusExporter.port }}
+        {{- end}}
+        name: exporter
+      resources:
+        limits:
+          cpu: 100m
+          memory: 200Mi
+        requests:
+          cpu: 100m
+          memory: 200Mi
+    tolerations:
+    {{- if .Values.podSpec.tolerations }}
+    {{- .Values.podSpec.tolerations | toYaml | nindent 4 }}
+    {{- end }}
 
   # Rack configuration
   {{- with .Values.rackConfig }}

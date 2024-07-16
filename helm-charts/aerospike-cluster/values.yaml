@@ -5,6 +5,10 @@
 ## Aerospike cluster size
 replicas: 3
 
+## PDB management enabled by default
+disablePDB: false
+maxUnavailable: 1
+
 ## Aerospike server docker image
 image:
   repository: aerospike/aerospike-server-enterprise
@@ -65,17 +69,23 @@ aerospikeNetworkPolicy: {}
 #   tlsAlternateAccess: hostExternal
 
 ## Pod spec
-podSpec: {}
-##  Multi pod per host
-#   multiPodPerHost: true
-
-## Sidecars (example: Aerospike Prometheus Exporter)
-#   sidecars:
-#     - name: aerospike-prometheus-exporter
-#       image: aerospike/aerospike-prometheus-exporter:1.24.0
-#       ports:
-#         - containerPort: 9145
-#           name: exporter
+podSpec:
+  hostNetwork: true
+  aerospikeContainer: {}
+  metadata: {}
+  tolerations: {}
+  aerospikeInitContainer:
+    image: aerospike/aerospike-kubernetes-init:2.3.2
+    imageRegistry: docker.io
+  affinity:
+    podAntiAffinity:
+      topologyKey: rack-id
+  sidecars:
+    aerospikePrometheusExporter:
+      image: docker.io/aerospike-exporter:1.19.0
+      port: 9145
+      user: prometheus-exporter-user
+      passwordSecret: auth-secret-prometheus-exporter-user
 
 ## Rack configuration
 rackConfig: {}
