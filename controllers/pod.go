@@ -236,9 +236,12 @@ func (r *SingleClusterReconciler) rollingRestartPods(
 	if len(failedPods) != 0 {
 		r.Log.Info("Restart failed pods", "pods", getPodNames(failedPods))
 
-		if res := r.restartPods(rackState, failedPods, restartTypeMap, true); !res.isSuccess {
-			return res
-		}
+		// Criteo: It conflicts with decommission operations and we have an auto-heal reconciler in aerospikemanager.
+		// if res := r.restartPods(rackState, failedPods, restartTypeMap, true); !res.isSuccess {
+		// 	return res
+		// }
+
+		return reconcileError(fmt.Errorf("Pods %s are failing. Waiting for auto heal/manual intervention", strings.Join(getPodNames(failedPods), ",")))
 	}
 
 	if len(activePods) != 0 {
