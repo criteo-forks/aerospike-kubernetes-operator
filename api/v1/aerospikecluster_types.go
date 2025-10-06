@@ -489,7 +489,8 @@ type RackConfig struct { //nolint:govet // for readability
 type Rack struct { //nolint:govet // for readability
 	// Identifier for the rack
 	ID int `json:"id"`
-
+	// Size is the number of replicas for this rack
+	Size int32 `json:"size,omitempty"`
 	// Zone name for setting rack affinity. Rack pods will be deployed to given Zone
 	// +optional
 	Zone string `json:"zone,omitempty"`
