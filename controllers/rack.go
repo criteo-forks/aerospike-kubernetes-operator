@@ -1824,28 +1824,112 @@ func isContainerNameInStorageVolumeAttachments(
 	return false
 }
 
-func splitRacks(nodes, racks int) []int {
-	nodesPerRack, extraNodes := nodes/racks, nodes%racks
-
-	// Distributing nodes in given racks
+// CRITEO: Distribute nodes in given racks
+// It supports:
+//   - ClusterSize without racks defining Size (same as before)
+//   - ClusterSize > sum(Rack.Size) to distribute remaining nodes:
+//   - Either by assigning exclusively on Racks without size if any
+//
+// Kept the method quite "didactic" for clarity sake
+// Basically the algo is:
+//   - Assign nodes to rack with defined size.
+//   - Compute remainingNodes to assign
+//   - Assign them only on rack without defined size (zero)
+func splitRacksUnevenly(clusterSize int, racks []asdbv1.Rack) []int {
+	nodesAssigned := 0
+	racksWithoutNodes := 0
 	var topology []int
 
-	for rackIdx := 0; rackIdx < racks; rackIdx++ {
-		nodesForThisRack := nodesPerRack
-		if rackIdx < extraNodes {
-			nodesForThisRack++
+	// Distribute nodes for Rack with defined size.
+	for rackIdx := range racks {
+		rackSize := int(racks[rackIdx].Size)
+		if rackSize == 0 {
+			racksWithoutNodes++
 		}
+		topology = append(topology, rackSize)
+		nodesAssigned += rackSize
+	}
 
-		topology = append(topology, nodesForThisRack)
+	remainingNodesToAssign := clusterSize - nodesAssigned
+
+	// Remaining nodes will be distributed across racks without size (ie. zero) if any
+	if remainingNodesToAssign == 0 {
+		return topology
+	} else if racksWithoutNodes > 0 {
+		var leftOverTopology []int
+		nodesPerRack, extraNodes := remainingNodesToAssign/racksWithoutNodes, remainingNodesToAssign%racksWithoutNodes
+		for rackIdx := 0; rackIdx < racksWithoutNodes; rackIdx++ {
+			nodesForThisRack := nodesPerRack
+			// This is mandatory to make sure we assign all remaining nodes.
+			// For example:
+			//   . racks:
+			//     . racks[0].Size = 0
+			//     . racks[1].Size = 0
+			//     . racks[2].Size = 0
+			//     . racks[3].Size = 1
+			//   . clusterSize: 12
+			//   . remainingNodesToAssign: 11
+			//   . racksWithoutNodes: 3
+			//   . nodesForThisRack: 11 / 3 -> 3
+			//   . extraNodes: 2
+			// This condition will guarantee that leftOverTopology[0] and [1]
+			// get an extra nodes each (rackIdx (0 and 1) < extraNodes (2)):
+			//   . leftOverTopology[0] = 4 (nodesForThisRack + 1)
+			//   . leftOverTopology[1] = 4 (nodesForThisRack + 1)
+			//   . leftOverTopology[2] = 3 (nodesForThisRack)
+			if rackIdx < extraNodes {
+				nodesForThisRack++
+			}
+			leftOverTopology = append(leftOverTopology, nodesForThisRack)
+		}
+		// Now that leftOverNodes has been assigned, update topology
+		leftOverIdx := 0
+		for rackIdx := range racks {
+			if topology[rackIdx] == 0 {
+				topology[rackIdx] = leftOverTopology[leftOverIdx]
+				leftOverIdx++
+			}
+		}
 	}
 
 	return topology
 }
 
+// CRITEO: Signature has been changed because we need each rack Size for the algo
+func splitRacks(nodes int, racks []asdbv1.Rack) []int {
+	/*
+		nodesPerRack, extraNodes := nodes/racks, nodes%racks
+		// Distributing nodes in given racks
+		var topology []int
+
+		for rackIdx := 0; rackIdx < racks; rackIdx++ {
+			nodesForThisRack := nodesPerRack
+			if rackIdx < extraNodes {
+				nodesForThisRack++
+			}
+			topology = append(topology, nodesForThisRack)
+		}
+		return topology
+	*/
+
+	// CRITEO: Call newly created method that allow uneven distribution of nodes
+	// Keeping above code in comment to ease merge from upstream
+	return splitRacksUnevenly(nodes, racks)
+}
+
+// CRITEO: to be able to test it, it needs to be exported (upperCase)
+func GetConfiguredRackStateList(aeroCluster *asdbv1.AerospikeCluster) []RackState {
+	return getConfiguredRackStateList(aeroCluster)
+}
+
 func getConfiguredRackStateList(aeroCluster *asdbv1.AerospikeCluster) []RackState {
-	topology := splitRacks(
-		int(aeroCluster.Spec.Size), len(aeroCluster.Spec.RackConfig.Racks),
-	)
+	// topology := splitRacks(
+	// 	int(aeroCluster.Spec.Size), len(aeroCluster.Spec.RackConfig.Racks),
+	// )
+
+	// CRITEO: splitRacks has been adapted to support uneven Racks' node distribution
+	// Keeping above code in comment to ease merge from upstream
+	topology := splitRacks(int(aeroCluster.Spec.Size), aeroCluster.Spec.RackConfig.Racks)
 
 	rackStateList := make([]RackState, 0, len(aeroCluster.Spec.RackConfig.Racks))
 
