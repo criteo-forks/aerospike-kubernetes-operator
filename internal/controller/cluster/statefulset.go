@@ -102,6 +102,7 @@ func (r *SingleClusterReconciler) createSTS(
 
 	ports := getSTSContainerPort(
 		r.aeroCluster.Spec.PodSpec.MultiPodPerHost,
+		r.aeroCluster.Spec.PodSpec.HostNetwork,
 		r.aeroCluster.Spec.AerospikeConfig,
 		&r.aeroCluster.Spec.AerospikeNetworkPolicy,
 	)
@@ -597,6 +598,7 @@ func (r *SingleClusterReconciler) updateSTSPorts(
 ) {
 	ports := getSTSContainerPort(
 		r.aeroCluster.Spec.PodSpec.MultiPodPerHost,
+		r.aeroCluster.Spec.PodSpec.HostNetwork,
 		r.aeroCluster.Spec.AerospikeConfig,
 		&r.aeroCluster.Spec.AerospikeNetworkPolicy,
 	)
@@ -1530,7 +1532,7 @@ func addVolumeDeviceInContainer(
 }
 
 func getSTSContainerPort(
-	multiPodPerHost *bool, aeroConf *asdbv1.AerospikeConfigSpec, aeroNetworkPolicy *asdbv1.AerospikeNetworkPolicy,
+	multiPodPerHost *bool, hostNetwork bool, aeroConf *asdbv1.AerospikeConfigSpec, aeroNetworkPolicy *asdbv1.AerospikeNetworkPolicy,
 ) []corev1.ContainerPort {
 	ports := make([]corev1.ContainerPort, 0, len(defaultContainerPorts))
 	portNames := make([]string, 0, len(defaultContainerPorts))
@@ -1571,12 +1573,12 @@ func getSTSContainerPort(
 			Protocol:      corev1.ProtocolTCP,
 		}
 		// Single pod per host. Enable hostPort setting
-		// when pod only network is not defined.
+		// when hostNetwork is true and pod only network is not defined.
 		// The hostPort setting applies to the Kubernetes containers.
 		// The container port will be exposed to the external network at <hostIP>:<hostPort>,
 		// where the hostIP is the IP address of the Kubernetes node where
 		// the container is running and the hostPort is the port requested by the user
-		if !asdbv1.GetBool(multiPodPerHost) && portInfo.exposedOnHost && !podOnlyNetwork {
+		if !asdbv1.GetBool(multiPodPerHost) && hostNetwork && portInfo.exposedOnHost && !podOnlyNetwork {
 			containerPort.HostPort = containerPort.ContainerPort
 		}
 
