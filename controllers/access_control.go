@@ -451,14 +451,16 @@ func (roleCreate aerospikeRoleCreateUpdate) execute(
 	}
 
 	if isCreate {
-		if err := roleCreate.createRole(client, adminPolicy, logger, recorder, aeroCluster); err != nil {
+		if errorCreate := roleCreate.createRole(client, adminPolicy, logger, recorder, aeroCluster); errorCreate != nil {
 			recorder.Eventf(
 				aeroCluster, corev1.EventTypeWarning, "RoleCreateFailed",
 				"Failed to Create Role %s", roleCreate.name,
 			)
+
+			return errorCreate
 		}
 
-		return err
+		return nil
 	}
 
 	if errorUpdate := roleCreate.updateRole(
