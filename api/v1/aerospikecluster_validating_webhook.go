@@ -196,8 +196,15 @@ func (c *AerospikeCluster) validate(aslog logr.Logger) error {
 		return err
 	}
 
+	// CRITEO: Compute sum of racks' size for further sanity check against cluster size
+	var rackedSize int32 = 0
+	allRackHaveSize := true
 	for idx := range c.Spec.RackConfig.Racks {
 		rack := &c.Spec.RackConfig.Racks[idx]
+		rackedSize += rack.Size
+		if rack.Size == 0 {
+			allRackHaveSize = false
+		}
 		// Storage should be validated before validating aerospikeConfig and fileStorage
 		if err := validateStorage(&rack.Storage, &c.Spec.PodSpec); err != nil {
 			return err
@@ -228,6 +235,12 @@ func (c *AerospikeCluster) validate(aslog logr.Logger) error {
 		); err != nil {
 			return err
 		}
+	}
+
+	// CRITEO: Validate that the sum of racks' size is lesser or equal to cluster size
+	// Or if it is strictly equal to cluster size in case all racks are defining a size
+	if err := validateRackSize(aslog, allRackHaveSize, rackedSize, c.Spec.Size); err != nil {
+		return err
 	}
 
 	// Validate resource and limit
@@ -675,6 +688,22 @@ const maxEnterpriseClusterSzLt5_0 = 128
 const maxEnterpriseClusterSzGt5_0 = 256
 
 const versionForSzCheck = "5.0.0"
+
+// CRITEO: Validate that the sum of racks' size is lesser or equal to cluster size.
+func validateRackSize(_ logr.Logger, allRackHaveSize bool, rackedSize int32, clusterSize int32) error {
+	if allRackHaveSize && rackedSize != clusterSize {
+		return fmt.Errorf(
+			"all racks have a defined size. Sum of rack size %d must be equal to cluster size %d", rackedSize, clusterSize,
+		)
+	}
+	if rackedSize > clusterSize {
+		return fmt.Errorf(
+			"added rack size %d cannot be more than cluster size %d", rackedSize, clusterSize,
+		)
+	}
+
+	return nil
+}
 
 func validateClusterSize(_ logr.Logger, version string, sz int) error {
 	val, err := lib.CompareVersions(version, versionForSzCheck)
