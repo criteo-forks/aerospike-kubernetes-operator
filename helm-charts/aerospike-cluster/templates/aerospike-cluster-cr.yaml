@@ -3,10 +3,15 @@ kind: AerospikeCluster
 metadata:
   name: {{ template "aerospike-cluster.commonName" . }}
   namespace: {{ .Release.Namespace }}
+  # finalizer needed to handle pvc deletion when AerospikeCluster is deleted.
+  finalizers:
+    - asdb.aerospike.com/storage-finalizer
   labels:
     app: {{ template "aerospike-cluster.commonName" . }}
     chart: {{ .Chart.Name }}
     release: {{ .Release.Name }}
+    # needed after first ako-3.3.0 reconciliation to allow scale-up
+    aerospike.com/api-version: v1
     {{- with .Values.customLabels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
