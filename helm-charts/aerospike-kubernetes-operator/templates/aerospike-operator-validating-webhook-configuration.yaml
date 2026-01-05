@@ -14,7 +14,7 @@ webhooks:
   - v1beta1
   namespaceSelector:
     matchExpressions:
-      - key: crto.in/namespace
+      - key: kubernetes.io/metadata.name
         operator: In
         values:
         {{- range $value := split "," .Values.watchNamespaces }}
