@@ -416,7 +416,7 @@ func (r *SingleClusterReconciler) restartASDOrUpdateAerospikeConf(podName string
 }
 
 func (r *SingleClusterReconciler) restartPods(
-	rackState *RackState, podsToRestart []*corev1.Pod, restartTypeMap map[string]RestartType, bypassPdb bool
+	rackState *RackState, podsToRestart []*corev1.Pod, restartTypeMap map[string]RestartType, bypassPdb bool,
 ) common.ReconcileResult {
 	// For each block volume removed from a namespace, pod status dirtyVolumes is appended with that volume name.
 	// For each file removed from a namespace, it is deleted right away.
@@ -481,7 +481,7 @@ func (r *SingleClusterReconciler) restartPods(
 		if err := r.quiesceUndoPods(r.getClientPolicy(), failedEvictedPods); err != nil {
 			r.Log.Error(err, "Unexpected error during quiesce-undo command")
 		}
-		return reconcileRequeueAfter(30)
+		return common.ReconcileRequeueAfter(30)
 	}
 
 	if err := r.updateOperationStatus(restartedASDPodNames, restartedPodNames); err != nil {
@@ -688,7 +688,7 @@ func (r *SingleClusterReconciler) deletePodAndEnsureImageUpdated(
 		}
 
 		if err := r.KubeClient.PolicyV1().Evictions(pod.Namespace).Evict(context.TODO(),
-			&policyv1.Eviction.Eviction{
+			&policyv1.Eviction{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      pod.Name,
 					Namespace: pod.Namespace,
