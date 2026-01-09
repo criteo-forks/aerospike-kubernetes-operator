@@ -140,13 +140,14 @@ func (r *SingleClusterReconciler) quiesceUndoPods(policy *as.ClientPolicy, pods 
 		return err
 	}
 
-	allHostConns, err := r.newAllHostConnWithOption(sets.Set[string]{})
-	if err != nil {
-		return err
-	}
-
 	if err = deployment.InfoQuiesceUndo(r.Log, policy, selectedHostConns); err != nil {
 		if strings.Contains(err.Error(), "failed to execute recluster command") {
+
+			allHostConns, err := r.newAllHostConnWithOption(sets.Set[string]{})
+			if err != nil {
+				return err
+			}
+
 			return deployment.InfoRecluster(r.Log, policy, allHostConns)
 		} else {
 			return err
