@@ -12,7 +12,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	policyv1beta1 "k8s.io/api/policy/v1beta1"
+	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
@@ -427,6 +427,7 @@ func (r *SingleClusterReconciler) restartPods(
 	restartedPods := make([]*corev1.Pod, 0, len(podsToRestart))
 	restartedPodNames := make([]string, 0, len(podsToRestart))
 	restartedASDPodNames := make([]string, 0, len(podsToRestart))
+	failedEvictedPods := make([]*corev1.Pod, 0)
 
 	for idx := range podsToRestart {
 		pod := podsToRestart[idx]
@@ -444,7 +445,7 @@ func (r *SingleClusterReconciler) restartPods(
 		} else if restartType == podRestart {
 
 			if r.isLocalPVCDeletionRequired(rackState, pod) || bypassPdb {
-				if r.isLocalPVCDeletionRequired(rackState, pod){
+				if r.isLocalPVCDeletionRequired(rackState, pod) {
 					if err := r.deleteLocalPVCs(rackState, pod); err != nil {
 						return common.ReconcileError(err)
 					}
@@ -455,13 +456,9 @@ func (r *SingleClusterReconciler) restartPods(
 					return common.ReconcileError(err)
 				}
 
-				restartedPods = append(restartedPods, pod)
-				restartedPodNames = append(restartedPodNames, pod.Name)
-
-				r.Log.V(1).Info("Pod deleted", "podName", pod.Name)
 			} else {
-				if err := r.KubeClient.CoreV1().Pods(pod.Namespace).Evict(context.TODO(),
-					&policyv1beta1.Eviction{
+				if err := r.KubeClient.PolicyV1().Evictions(pod.Namespace).Evict(context.TODO(),
+					&policyv1.Eviction{
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      pod.Name,
 							Namespace: pod.Namespace,
@@ -472,16 +469,12 @@ func (r *SingleClusterReconciler) restartPods(
 					failedEvictedPods = append(failedEvictedPods, pod)
 					continue
 				}
-				restartedPods = append(restartedPods, pod)
-				restartedPodNames = append(restartedPodNames, pod.Name)
-
-				r.Log.V(1).Info("Pod deleted", "podName", pod.Name)
 			}
-		}
-	}
+			restartedPods = append(restartedPods, pod)
+			restartedPodNames = append(restartedPodNames, pod.Name)
 
-	if err := r.updateOperationStatus(restartedASDPodNames, restartedPodNames); err != nil {
-		return common.ReconcileError(err)
+			r.Log.V(1).Info("Pod deleted", "podName", pod.Name)
+		}
 	}
 
 	if len(failedEvictedPods) > 0 {
@@ -489,6 +482,10 @@ func (r *SingleClusterReconciler) restartPods(
 			r.Log.Error(err, "Unexpected error during quiesce-undo command")
 		}
 		return reconcileRequeueAfter(30)
+	}
+
+	if err := r.updateOperationStatus(restartedASDPodNames, restartedPodNames); err != nil {
+		return common.ReconcileError(err)
 	}
 
 	if len(restartedPods) > 0 {
