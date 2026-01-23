@@ -1266,6 +1266,27 @@ func validatePodSpec(cluster *asdbv1.AerospikeCluster) error {
 		return err
 	}
 
+	// CRITEO: Validation of podSpec per-rack
+	for idx := range cluster.Spec.RackConfig.Racks {
+		rack := &cluster.Spec.RackConfig.Racks[idx]
+		effectiveHostNetwork := asdbv1.GetRackHostNetwork(rack, cluster.Spec.PodSpec.HostNetwork)
+
+		// Validate per-rack hostNetwork with multiPodPerHost
+		if effectiveHostNetwork && asdbv1.GetBool(cluster.Spec.PodSpec.MultiPodPerHost) {
+			return fmt.Errorf("host networking cannot be enabled with multi pod per host (rack %d)", rack.ID)
+		}
+
+		// Validate per-rack DNS policy and config
+		if rack.InputPodSpec != nil && (rack.InputPodSpec.InputDNSPolicy != nil || rack.InputPodSpec.DNSConfig != nil) {
+			effectiveDNSPolicy := asdbv1.GetRackDNSPolicy(rack, cluster.Spec.PodSpec.InputDNSPolicy, effectiveHostNetwork)
+			effectiveDNSConfig := asdbv1.GetRackDNSConfig(rack, cluster.Spec.PodSpec.DNSConfig)
+
+			if err := validateDNS(effectiveDNSPolicy, effectiveDNSConfig); err != nil {
+				return fmt.Errorf("rack %d: %w", rack.ID, err)
+			}
+		}
+	}
+
 	var allContainers []v1.Container
 
 	allContainers = append(allContainers, cluster.Spec.PodSpec.Sidecars...)
@@ -1349,6 +1370,14 @@ func validateNetworkPolicy(cluster *asdbv1.AerospikeCluster) error {
 
 		if cluster.Spec.PodSpec.HostNetwork {
 			return fmt.Errorf("hostNetwork is not allowed with 'customInterface' network type")
+		}
+
+		// CRITEO: Check per-rack hostNetwork with customInterface
+		for idx := range cluster.Spec.RackConfig.Racks {
+			rack := &cluster.Spec.RackConfig.Racks[idx]
+			if asdbv1.GetRackHostNetwork(rack, cluster.Spec.PodSpec.HostNetwork) {
+				return fmt.Errorf("hostNetwork is not allowed with 'customInterface' network type (rack %d)", rack.ID)
+			}
 		}
 
 		if !networkSet.HasAll(netList...) {

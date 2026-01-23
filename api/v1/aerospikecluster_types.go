@@ -440,6 +440,23 @@ type AerospikeInitContainerSpec struct { //nolint:govet // for readability
 type RackPodSpec struct {
 	// SchedulingPolicy overrides for this rack.
 	SchedulingPolicy `json:",inline"`
+
+	// CRITEO: Allow override of HostNetwork + DNSPolicy + DNSConfig
+
+	// HostNetwork enables host networking for the pod.
+	// To enable hostNetwork multiPodPerHost must be false.
+	// +optional
+	HostNetwork *bool `json:"hostNetwork,omitempty"`
+
+	// InputDNSPolicy is the DNS policy for this rack.
+	// If hostNetwork is true and policy is not specified, it defaults to ClusterFirstWithHostNet
+	// +optional
+	InputDNSPolicy *corev1.DNSPolicy `json:"dnsPolicy,omitempty"`
+
+	// DNSConfig defines the DNS parameters of a pod in addition to those generated from DNSPolicy.
+	// This is required field when dnsPolicy is set to `None`
+	// +optional
+	DNSConfig *corev1.PodDNSConfig `json:"dnsConfig,omitempty"`
 }
 
 // SchedulingPolicy controls pod placement on Kubernetes nodes.

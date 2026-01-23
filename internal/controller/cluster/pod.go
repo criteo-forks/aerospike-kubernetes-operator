@@ -451,6 +451,7 @@ func (r *SingleClusterReconciler) restartPods(
 					}
 				}
 
+				// This case happens to bypass PDB during a rolling restart on failing pods.
 				if err := r.Client.Delete(context.TODO(), pod); err != nil {
 					r.Log.Error(err, "Failed to delete pod")
 					return common.ReconcileError(err)
@@ -1833,12 +1834,14 @@ func (r *SingleClusterReconciler) isAnyPodSpecUpdated(rackState *RackState,
 	}
 
 	// Currently just checking the server container ports, but can be extended to other fields as needed
-	return r.checkForPortsUpdate(sts, pod)
+	return r.checkForPortsUpdate(sts, pod, rackState)
 }
 
-func (r *SingleClusterReconciler) checkForPortsUpdate(sts *appsv1.StatefulSet, pod *corev1.Pod,
+func (r *SingleClusterReconciler) checkForPortsUpdate(sts *appsv1.StatefulSet, pod *corev1.Pod, rackState *RackState,
 ) (bool, error) {
-	r.updateSTSPorts(sts)
+	// CRITEO: Very important to pass the rackState to get the hostNetwork parameter of the rack here
+	// since it will determine if containers use the host network or not.
+	r.updateSTSPorts(sts, rackState)
 
 	stsServerContainer := getContainer(sts.Spec.Template.Spec.Containers, asdbv1.AerospikeServerContainerName)
 	serverContainer := getContainer(pod.Spec.Containers, asdbv1.AerospikeServerContainerName)

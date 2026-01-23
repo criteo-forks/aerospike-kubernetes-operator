@@ -102,7 +102,7 @@ func (r *SingleClusterReconciler) createSTS(
 
 	ports := getSTSContainerPort(
 		r.aeroCluster.Spec.PodSpec.MultiPodPerHost,
-		r.aeroCluster.Spec.PodSpec.HostNetwork,
+		asdbv1.GetBool(rackState.Rack.PodSpec.HostNetwork),
 		r.aeroCluster.Spec.AerospikeConfig,
 		&r.aeroCluster.Spec.AerospikeNetworkPolicy,
 	)
@@ -594,11 +594,11 @@ func (r *SingleClusterReconciler) updateSTSStorage(
 }
 
 func (r *SingleClusterReconciler) updateSTSPorts(
-	st *appsv1.StatefulSet,
+	st *appsv1.StatefulSet, rackState *RackState,
 ) {
 	ports := getSTSContainerPort(
 		r.aeroCluster.Spec.PodSpec.MultiPodPerHost,
-		r.aeroCluster.Spec.PodSpec.HostNetwork,
+		asdbv1.GetBool(rackState.Rack.PodSpec.HostNetwork),
 		r.aeroCluster.Spec.AerospikeConfig,
 		&r.aeroCluster.Spec.AerospikeNetworkPolicy,
 	)
@@ -630,7 +630,7 @@ func (r *SingleClusterReconciler) updateSTS(
 	r.updateSTSFromPodSpec(statefulSet, rackState)
 
 	// Updating ports when switching between tls and non-tls.
-	r.updateSTSPorts(statefulSet)
+	r.updateSTSPorts(statefulSet, rackState)
 
 	// Update the images for all containers from the spec.
 	// Our Pod Spec does not contain image for the Aerospike Server
@@ -985,12 +985,15 @@ func (r *SingleClusterReconciler) updateSTSFromPodSpec(
 	userDefinedLabels := r.aeroCluster.Spec.PodSpec.AerospikeObjectMeta.Labels
 	mergedLabels := utils.MergeLabels(defaultLabels, userDefinedLabels)
 
-	st.Spec.Template.Spec.HostNetwork = r.aeroCluster.Spec.PodSpec.HostNetwork
+	// Use pre-computed effective values from mutating webhook
 	st.Spec.Template.ObjectMeta.Labels = mergedLabels
 	st.Spec.Template.ObjectMeta.Annotations = r.aeroCluster.Spec.PodSpec.AerospikeObjectMeta.Annotations
 
-	st.Spec.Template.Spec.DNSPolicy = r.aeroCluster.Spec.PodSpec.DNSPolicy
-	st.Spec.Template.Spec.DNSConfig = r.aeroCluster.Spec.PodSpec.DNSConfig
+	// Use pre-computed effective DNS settings from mutating webhook
+	// CRITEO: rackState.Rack.PodSpec.HostNetwork/InputDNSPolicy/DNSConfig are set in mutating webhook
+	st.Spec.Template.Spec.HostNetwork = *rackState.Rack.PodSpec.HostNetwork
+	st.Spec.Template.Spec.DNSPolicy = *rackState.Rack.PodSpec.InputDNSPolicy
+	st.Spec.Template.Spec.DNSConfig = rackState.Rack.PodSpec.DNSConfig
 
 	st.Spec.Template.Spec.SecurityContext = r.aeroCluster.Spec.PodSpec.SecurityContext
 	st.Spec.Template.Spec.ImagePullSecrets = r.aeroCluster.Spec.PodSpec.ImagePullSecrets
