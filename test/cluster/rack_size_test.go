@@ -1,10 +1,10 @@
-package test
+package cluster
 
 import (
 	"testing"
 
-	asdbv1 "github.com/aerospike/aerospike-kubernetes-operator/api/v1"
-	"github.com/aerospike/aerospike-kubernetes-operator/controllers"
+	asdbv1 "github.com/aerospike/aerospike-kubernetes-operator/v4/api/v1"
+	"github.com/aerospike/aerospike-kubernetes-operator/v4/internal/controller/cluster"
 )
 
 func TestClusterSizeWithoutRackSize(t *testing.T) {
@@ -23,10 +23,10 @@ func TestClusterSizeWithoutRackSize(t *testing.T) {
 		3: 1,
 	}
 	aeroCluster.Spec.RackConfig.Racks = racks
-	rackStates := controllers.GetConfiguredRackStateList(aeroCluster)
+	rackStates := cluster.GetConfiguredRackStateList(aeroCluster)
 	for _, rackState := range rackStates {
 		expectedSize := expectedRackSizeById[rackState.Rack.ID]
-		if rackState.Size != expectedSize {
+		if rackState.Size != int32(expectedSize) {
 			t.Errorf(`rack %d with size %d does not match expected size of %d`, rackState.Rack.ID, rackState.Size, expectedSize)
 		}
 	}
@@ -44,10 +44,10 @@ func TestClusterSizeWithoutRackSize(t *testing.T) {
 		2: 3,
 	}
 	aeroCluster.Spec.RackConfig.Racks = racks
-	rackStates = controllers.GetConfiguredRackStateList(aeroCluster)
+	rackStates = cluster.GetConfiguredRackStateList(aeroCluster)
 	for _, rackState := range rackStates {
 		expectedSize := expectedRackSizeById[rackState.Rack.ID]
-		if rackState.Size != expectedSize {
+		if rackState.Size != int32(expectedSize) {
 			t.Errorf(`rack %d with size %d does not match expected size of %d`, rackState.Rack.ID, rackState.Size, expectedSize)
 		}
 	}
@@ -67,10 +67,10 @@ func TestClusterSizeWithoutRackSize(t *testing.T) {
 		3: 0,
 	}
 	aeroCluster.Spec.RackConfig.Racks = racks
-	rackStates = controllers.GetConfiguredRackStateList(aeroCluster)
+	rackStates = cluster.GetConfiguredRackStateList(aeroCluster)
 	for _, rackState := range rackStates {
 		expectedSize := expectedRackSizeById[rackState.Rack.ID]
-		if rackState.Size != expectedSize {
+		if rackState.Size != int32(expectedSize) {
 			t.Errorf(`rack %d with size %d does not match expected size of %d`, rackState.Rack.ID, rackState.Size, expectedSize)
 		}
 	}
@@ -86,10 +86,10 @@ func TestClusterSizeWithoutRackSize(t *testing.T) {
 		1: 2,
 	}
 	aeroCluster.Spec.RackConfig.Racks = racks
-	rackStates = controllers.GetConfiguredRackStateList(aeroCluster)
+	rackStates = cluster.GetConfiguredRackStateList(aeroCluster)
 	for _, rackState := range rackStates {
 		expectedSize := expectedRackSizeById[rackState.Rack.ID]
-		if rackState.Size != expectedSize {
+		if rackState.Size != int32(expectedSize) {
 			t.Errorf(`rack %d with size %d does not match expected size of %d`, rackState.Rack.ID, rackState.Size, expectedSize)
 		}
 	}
@@ -107,10 +107,10 @@ func TestClusterSizeWithoutRackSize(t *testing.T) {
 		2: 1,
 	}
 	aeroCluster.Spec.RackConfig.Racks = racks
-	rackStates = controllers.GetConfiguredRackStateList(aeroCluster)
+	rackStates = cluster.GetConfiguredRackStateList(aeroCluster)
 	for _, rackState := range rackStates {
 		expectedSize := expectedRackSizeById[rackState.Rack.ID]
-		if rackState.Size != expectedSize {
+		if rackState.Size != int32(expectedSize) {
 			t.Errorf(`rack %d with size %d does not match expected size of %d`, rackState.Rack.ID, rackState.Size, expectedSize)
 		}
 	}
@@ -133,10 +133,10 @@ func TestClusterSizeWithRackSize(t *testing.T) {
 		3: 1,
 	}
 	aeroCluster.Spec.RackConfig.Racks = racks
-	rackStates := controllers.GetConfiguredRackStateList(aeroCluster)
+	rackStates := cluster.GetConfiguredRackStateList(aeroCluster)
 	for _, rackState := range rackStates {
 		expectedSize := expectedRackSizeById[rackState.Rack.ID]
-		if rackState.Size != expectedSize {
+		if rackState.Size != int32(expectedSize) {
 			t.Errorf(`rack %d with size %d does not match expected size of %d`, rackState.Rack.ID, rackState.Size, expectedSize)
 		}
 	}
@@ -159,10 +159,10 @@ func TestClusterSizeWithRackSize(t *testing.T) {
 		4: 1,
 	}
 	aeroCluster.Spec.RackConfig.Racks = racks
-	rackStates = controllers.GetConfiguredRackStateList(aeroCluster)
+	rackStates = cluster.GetConfiguredRackStateList(aeroCluster)
 	for _, rackState := range rackStates {
 		expectedSize := expectedRackSizeById[rackState.Rack.ID]
-		if rackState.Size != expectedSize {
+		if rackState.Size != int32(expectedSize) {
 			t.Errorf(`rack %d with size %d does not match expected size of %d`, rackState.Rack.ID, rackState.Size, expectedSize)
 		}
 	}
@@ -178,10 +178,10 @@ func TestClusterSizeWithRackSize(t *testing.T) {
 		1: 4,
 	}
 	aeroCluster.Spec.RackConfig.Racks = racks
-	rackStates = controllers.GetConfiguredRackStateList(aeroCluster)
+	rackStates = cluster.GetConfiguredRackStateList(aeroCluster)
 	for _, rackState := range rackStates {
 		expectedSize := expectedRackSizeById[rackState.Rack.ID]
-		if rackState.Size != expectedSize {
+		if rackState.Size != int32(expectedSize) {
 			t.Errorf(`rack %d with size %d does not match expected size of %d`, rackState.Rack.ID, rackState.Size, expectedSize)
 		}
 	}
