@@ -203,6 +203,20 @@ func createPodSpecForRack(
 	rackFullPodSpec.Tolerations = rack.PodSpec.Tolerations
 	rackFullPodSpec.NodeSelector = rack.PodSpec.NodeSelector
 
+	// CRITEO: Include rack-level HostNetwork/DNSPolicy/DNSConfig overrides in hash computation
+	// to trigger rolling restart when these fields change at the rack level
+	if rack.PodSpec.HostNetwork != nil {
+		rackFullPodSpec.HostNetwork = *rack.PodSpec.HostNetwork
+	}
+
+	if rack.PodSpec.InputDNSPolicy != nil {
+		rackFullPodSpec.InputDNSPolicy = rack.PodSpec.InputDNSPolicy
+	}
+
+	if rack.PodSpec.DNSConfig != nil {
+		rackFullPodSpec.DNSConfig = rack.PodSpec.DNSConfig
+	}
+
 	return rackFullPodSpec
 }
 
@@ -291,7 +305,7 @@ func (r *SingleClusterReconciler) getBaseConfData(rack *asdbv1.Rack) (map[string
 		HeartBeatTLSPort: hbTLSPortParam,
 		FabricPort:       fabricPortParam,
 		FabricTLSPort:    fabricTLSPortParam,
-		HostNetwork:      r.aeroCluster.Spec.PodSpec.HostNetwork,
+		HostNetwork:      asdbv1.GetBool(rack.PodSpec.HostNetwork),
 	}
 
 	baseConfData := map[string]string{}

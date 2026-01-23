@@ -108,13 +108,14 @@ func (acd *AerospikeClusterCustomDefaulter) setDefaults(asLog logr.Logger, clust
 		return err
 	}
 
+	// CRITEO: Move on top of updateRacks to benefits from the DNSPolicy automatic resolution
+	// Set defaults for pod spec
+	setPodSpecDefaults(&cluster.Spec.PodSpec)
+
 	// Update racks configuration using global values where required.
 	if err := updateRacks(asLog, cluster); err != nil {
 		return err
 	}
-
-	// Set defaults for pod spec
-	setPodSpecDefaults(&cluster.Spec.PodSpec)
 
 	// Validation policy
 	if cluster.Spec.ValidationPolicy == nil {
@@ -237,14 +238,37 @@ func updateRacksPodSpecFromGlobal(asLog logr.Logger, cluster *asdbv1.AerospikeCl
 		rack := &cluster.Spec.RackConfig.Racks[idx]
 
 		if rack.InputPodSpec == nil {
+			// No rack override - use global values
 			rack.PodSpec.SchedulingPolicy = cluster.Spec.PodSpec.SchedulingPolicy
+			// CRITEO: New override possible
+			rack.PodSpec.HostNetwork = &cluster.Spec.PodSpec.HostNetwork
+			rack.PodSpec.InputDNSPolicy = &cluster.Spec.PodSpec.DNSPolicy
+			rack.PodSpec.DNSConfig = cluster.Spec.PodSpec.DNSConfig
 
 			asLog.V(1).Info(
 				"Updated rack podSpec with global podSpec", "rack id", rack.ID,
 				"podSpec", rack.PodSpec,
 			)
 		} else {
+			// Rack has override - merge with global defaults
 			rack.PodSpec = *rack.InputPodSpec
+
+			// CRITEO: HostNetwork: use rack override if set, else global
+			effectiveRackHostNetwork := asdbv1.GetRackHostNetwork(rack, cluster.Spec.PodSpec.HostNetwork)
+			rack.PodSpec.HostNetwork = &effectiveRackHostNetwork
+
+			// CRITEO: DNSPolicy: use rack override if set, else compute from global/hostNetwork
+			effectiveDNSPolicy := asdbv1.GetRackDNSPolicy(rack, cluster.Spec.PodSpec.InputDNSPolicy, effectiveRackHostNetwork)
+			rack.PodSpec.InputDNSPolicy = &effectiveDNSPolicy
+
+			// CRITEO: DNSConfig: use rack override if set, else global
+			effectiveDNSConfig := asdbv1.GetRackDNSConfig(rack, cluster.Spec.PodSpec.DNSConfig)
+			rack.PodSpec.DNSConfig = effectiveDNSConfig
+
+			asLog.V(1).Info(
+				"Updated rack podSpec with rack input podSpec", "rack id", rack.ID,
+				"podSpec", rack.PodSpec,
+			)
 		}
 	}
 }

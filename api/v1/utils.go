@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/utils/ptr"
 
@@ -540,6 +541,50 @@ func IsNSSCEnabled(nsConf map[string]interface{}) bool {
 // GetBool returns the value of the given bool pointer. If the pointer is nil, it returns false.
 func GetBool(boolPtr *bool) bool {
 	return ptr.Deref(boolPtr, false)
+}
+
+// GetRackHostNetwork returns the effective hostNetwork value for a rack.
+// If the rack's InputPodSpec has a hostNetwork override, it returns that value.
+// Otherwise, it returns the cluster-level hostNetwork value.
+func GetRackHostNetwork(rack *Rack, clusterHostNetwork bool) bool {
+	if rack.InputPodSpec != nil && rack.InputPodSpec.HostNetwork != nil {
+		return *rack.InputPodSpec.HostNetwork
+	}
+
+	return clusterHostNetwork
+}
+
+// GetRackDNSPolicy returns the effective DNS policy for a rack.
+// Priority: rack InputDNSPolicy > cluster InputDNSPolicy > auto-computed based on hostNetwork.
+func GetRackDNSPolicy(rack *Rack, clusterInputDNSPolicy *corev1.DNSPolicy, effectiveHostNetwork bool) corev1.DNSPolicy {
+	// Check rack-level override first
+	if rack.InputPodSpec != nil && rack.InputPodSpec.InputDNSPolicy != nil {
+		return *rack.InputPodSpec.InputDNSPolicy
+	}
+
+	// Fall back to cluster-level
+	if clusterInputDNSPolicy != nil {
+		return *clusterInputDNSPolicy
+	}
+
+	// Auto-compute based on effective hostNetwork
+	if effectiveHostNetwork {
+		return corev1.DNSClusterFirstWithHostNet
+	}
+
+	return corev1.DNSClusterFirst
+}
+
+// GetRackDNSConfig returns the effective DNS config for a rack.
+// Priority: rack DNSConfig > cluster DNSConfig.
+func GetRackDNSConfig(rack *Rack, clusterDNSConfig *corev1.PodDNSConfig) *corev1.PodDNSConfig {
+	// Check rack-level override first
+	if rack.InputPodSpec != nil && rack.InputPodSpec.DNSConfig != nil {
+		return rack.InputPodSpec.DNSConfig
+	}
+
+	// Fall back to cluster-level
+	return clusterDNSConfig
 }
 
 // GetDefaultPasswordFilePath returns the default-password-fille path if configured.
