@@ -714,8 +714,9 @@ spec:
                       created by the operator.
                     properties:
                       image:
-                        description: Image is the name of image for aerospike-init used with AKO criteo-3.3.0 this is to remove after bump to criteo-4.1.2
-                          container image
+                        description: Image is the name of image for aerospike-init
+                          used with AKO criteo-3.3.0 this is to remove after bump
+                          to criteo-4.1.2 container image
                         type: string
                       imageNameAndTag:
                         description: ImageNameAndTag is the name:tag of aerospike-init
@@ -9806,8 +9807,9 @@ spec:
                       created by the operator.
                     properties:
                       image:
-                        description: Image is the name of image for aerospike-init used with AKO criteo-3.3.0 this is to remove after bump to criteo-4.1.2
-                          container image
+                        description: Image is the name of image for aerospike-init
+                          used with AKO criteo-3.3.0 this is to remove after bump
+                          to criteo-4.1.2 container image
                         type: string
                       imageNameAndTag:
                         description: ImageNameAndTag is the name:tag of aerospike-init
