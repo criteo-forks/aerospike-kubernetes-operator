@@ -413,6 +413,10 @@ type AerospikeInitContainerSpec struct { //nolint:govet // for readability
 	// +optional
 	ImageRegistry string `json:"imageRegistry,omitempty"`
 
+	// Image is the name of image for aerospike-init used with AKO criteo-3.3.0 this is to remove after bump to criteo-4.1.2 container image
+	// +optional
+	Image string `json:"image,omitempty"`
+
 	// ImageRegistryNamespace is the name of namespace in registry for aerospike-init container image
 	// +optional
 	ImageRegistryNamespace *string `json:"imageRegistryNamespace,omitempty"`
@@ -656,7 +660,7 @@ type AerospikePersistentVolumePolicySpec struct {
 
 	// WipeMethod determines how volumes attached to Aerospike server pods are wiped for dealing with storage format
 	// changes.
-	// +kubebuilder:validation:Enum=dd;blkdiscard;deleteFiles
+	// +kubebuilder:validation:Enum=none;dd;blkdiscard;deleteFiles
 	// +optional
 	InputWipeMethod *AerospikeVolumeMethod `json:"wipeMethod,omitempty"`
 
@@ -672,7 +676,7 @@ type AerospikePersistentVolumePolicySpec struct {
 
 	// Effective/operative value to use as the volume wipe method after applying defaults.
 	// +optional
-	// +kubebuilder:validation:Enum=dd;blkdiscard;deleteFiles
+	// +kubebuilder:validation:Enum=none;dd;blkdiscard;deleteFiles
 	WipeMethod AerospikeVolumeMethod `json:"effectiveWipeMethod,omitempty"`
 
 	// Effective/operative value to use for cascade delete after applying defaults.
