@@ -309,3 +309,69 @@ func TestMutatingWebhook_RackPodSpec_DNSConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestMutatingWebhook_RackID_Override(t *testing.T) {
+	tests := []struct {
+		name           string
+		inputRackID    interface{}
+		expectedRackID float64
+	}{
+		{
+			name:           "rack-id already set with different value is preserved",
+			inputRackID:    float64(99),
+			expectedRackID: float64(99),
+		},
+		{
+			name:           "rack-id already set with same value as rack ID is preserved",
+			inputRackID:    float64(1),
+			expectedRackID: float64(1),
+		},
+		{
+			name:           "rack-id not set gets default from rack ID",
+			inputRackID:    nil,
+			expectedRackID: float64(1),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cluster := createMinimalCluster()
+			cluster.Spec.RackConfig.Namespaces = []string{"test"}
+
+			// Build rack with optional InputAerospikeConfig containing rack-id override
+			rack := asdbv1.Rack{ID: 1}
+			if tt.inputRackID != nil {
+				rack.InputAerospikeConfig = &asdbv1.AerospikeConfigSpec{
+					Value: map[string]interface{}{
+						"namespaces": []interface{}{
+							map[string]interface{}{
+								"name":    "test",
+								"rack-id": tt.inputRackID,
+							},
+						},
+					},
+				}
+			}
+			cluster.Spec.RackConfig.Racks = []asdbv1.Rack{rack}
+
+			// Call the mutating webhook defaulter
+			defaulter := &webhookv1.AerospikeClusterCustomDefaulter{}
+			err := defaulter.Default(context.Background(), cluster)
+			if err != nil {
+				t.Fatalf("Default() failed: %v", err)
+			}
+
+			// Check the rack-id in the rack's aerospike config
+			resultRack := cluster.Spec.RackConfig.Racks[0]
+			rackNamespaces := resultRack.AerospikeConfig.Value["namespaces"].([]interface{})
+			rackNsMap := rackNamespaces[0].(map[string]interface{})
+			actualRackID, ok := rackNsMap["rack-id"]
+			if !ok {
+				t.Fatalf("rack-id not found in namespace config")
+			}
+			if actualRackID != tt.expectedRackID {
+				t.Errorf("expected rack-id=%v, got %v", tt.expectedRackID, actualRackID)
+			}
+		})
+	}
+}

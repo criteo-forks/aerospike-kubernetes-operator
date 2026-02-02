@@ -440,6 +440,17 @@ func setDefaultNsConf(asLog logr.Logger, configSpec asdbv1.AerospikeConfigSpec,
 							delete(nsMap, "rack-id")
 						}
 
+						// CRITEO: Allow override of rack-id by storing it in a dedicated variable to restore it after default value assignation.
+						// We have RackID which is the rack.id in aerospikecluster defining the STS name.
+						// And we have rack-id at namespace level in aerospike.conf which is the availability zone (domain failure) for rack-awareness.
+						// Operator mutation webhook forces that namespace rack-id field is equal to its aerospikecluster rack.id defining the STS name.
+						// cf. https://aerospike.com/docs/database/manage/namespace/rack-aware/#statically-assign-a-rack-in-an-ap-namespace
+						var nsRackId interface{}
+						if value, ok := nsMap["rack-id"]; ok {
+							nsRackId = value
+							delete(nsMap, "rack-id")
+						}
+
 						if err := setDefaultsInConfigMap(
 							asLog, nsMap, defaultConfs,
 						); err != nil {
@@ -447,6 +458,11 @@ func setDefaultNsConf(asLog logr.Logger, configSpec asdbv1.AerospikeConfigSpec,
 								"failed to set default aerospikeConfig.namespaces rack config: %v",
 								err,
 							)
+						}
+
+						// CRITEO: Restore the value of rack-id after setDefaultsInConfigMap if it was set
+						if nsRackId != nil {
+							nsMap["rack-id"] = nsRackId
 						}
 					} else {
 						// Deleting rack-id for namespaces in global config.
