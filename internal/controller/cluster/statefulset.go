@@ -596,9 +596,17 @@ func (r *SingleClusterReconciler) updateSTSStorage(
 func (r *SingleClusterReconciler) updateSTSPorts(
 	st *appsv1.StatefulSet, rackState *RackState,
 ) {
+
+	// CRITEO: We must fallback to cluster level hostNetwork here
+	// since this method is called in case podSpec has been independently
+	// updated, including manually without going through
+	effectiveHostNetwork := r.aeroCluster.Spec.PodSpec.HostNetwork
+	if rackState.Rack.PodSpec.HostNetwork != nil {
+		effectiveHostNetwork = *rackState.Rack.PodSpec.HostNetwork
+	}
 	ports := getSTSContainerPort(
 		r.aeroCluster.Spec.PodSpec.MultiPodPerHost,
-		asdbv1.GetBool(rackState.Rack.PodSpec.HostNetwork),
+		effectiveHostNetwork,
 		r.aeroCluster.Spec.AerospikeConfig,
 		&r.aeroCluster.Spec.AerospikeNetworkPolicy,
 	)
@@ -991,9 +999,25 @@ func (r *SingleClusterReconciler) updateSTSFromPodSpec(
 
 	// Use pre-computed effective DNS settings from mutating webhook
 	// CRITEO: rackState.Rack.PodSpec.HostNetwork/InputDNSPolicy/DNSConfig are set in mutating webhook
-	st.Spec.Template.Spec.HostNetwork = *rackState.Rack.PodSpec.HostNetwork
-	st.Spec.Template.Spec.DNSPolicy = *rackState.Rack.PodSpec.InputDNSPolicy
-	st.Spec.Template.Spec.DNSConfig = rackState.Rack.PodSpec.DNSConfig
+	// CRITEO: Important to protect against nullity for existing cluster ! Otherwise we cannot deliver operator.
+
+	if rackState.Rack.PodSpec.HostNetwork != nil {
+		st.Spec.Template.Spec.HostNetwork = *rackState.Rack.PodSpec.HostNetwork
+	} else {
+		st.Spec.Template.Spec.HostNetwork = r.aeroCluster.Spec.PodSpec.HostNetwork
+	}
+
+	if rackState.Rack.PodSpec.InputDNSPolicy != nil {
+		st.Spec.Template.Spec.DNSPolicy = *rackState.Rack.PodSpec.InputDNSPolicy
+	} else {
+		st.Spec.Template.Spec.DNSPolicy = r.aeroCluster.Spec.PodSpec.DNSPolicy
+	}
+
+	if rackState.Rack.PodSpec.DNSConfig != nil {
+		st.Spec.Template.Spec.DNSConfig = rackState.Rack.PodSpec.DNSConfig
+	} else {
+		st.Spec.Template.Spec.DNSConfig = r.aeroCluster.Spec.PodSpec.DNSConfig
+	}
 
 	st.Spec.Template.Spec.SecurityContext = r.aeroCluster.Spec.PodSpec.SecurityContext
 	st.Spec.Template.Spec.ImagePullSecrets = r.aeroCluster.Spec.PodSpec.ImagePullSecrets
