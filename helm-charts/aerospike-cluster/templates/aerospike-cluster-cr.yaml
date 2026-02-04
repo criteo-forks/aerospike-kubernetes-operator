@@ -115,7 +115,7 @@ spec:
     sidecars:
     - args:
       - |
-        export METRIC_LABELS="pod=\"$MY_POD_NAME\", host_ip=\"$MY_HOST_IP\""
+        export METRIC_LABELS="pod=\"$MY_POD_NAME\", host_ip=\"$MY_HOST_IP\", node_name=\"$MY_NODE_NAME\""
         /docker-entrypoint.sh aerospike-prometheus-exporter --config /etc/aerospike-prometheus-exporter/ape.toml;
       command:
       - /bin/sh
@@ -149,6 +149,10 @@ spec:
         valueFrom:
           fieldRef:
             fieldPath: status.hostIP
+      - name: MY_NODE_NAME
+        valueFrom:
+          fieldRef:
+            fieldPath: spec.nodeName
       image: {{ .Values.podSpec.sidecars.aerospikePrometheusExporter.image }}
       name: aerospike-prometheus-exporter
       ports:
