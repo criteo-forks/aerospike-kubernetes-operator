@@ -295,6 +295,13 @@ func (r *SingleClusterReconciler) getBaseConfData(rack *asdbv1.Rack) (map[string
 		fabricPortParam = *fabricPort
 	}
 
+	// CRITEO: Fallback to cluster-level hostNetwork if rack-level is nil
+	// This ensures existing CRs that haven't been re-mutated still work correctly
+	effectiveHostNetwork := r.aeroCluster.Spec.PodSpec.HostNetwork
+	if rack.PodSpec.HostNetwork != nil {
+		effectiveHostNetwork = *rack.PodSpec.HostNetwork
+	}
+
 	initTemplateInput := initializeTemplateInput{
 		WorkDir:          workDir,
 		MultiPodPerHost:  asdbv1.GetBool(r.aeroCluster.Spec.PodSpec.MultiPodPerHost),
@@ -305,7 +312,7 @@ func (r *SingleClusterReconciler) getBaseConfData(rack *asdbv1.Rack) (map[string
 		HeartBeatTLSPort: hbTLSPortParam,
 		FabricPort:       fabricPortParam,
 		FabricTLSPort:    fabricTLSPortParam,
-		HostNetwork:      asdbv1.GetBool(rack.PodSpec.HostNetwork),
+		HostNetwork:      effectiveHostNetwork,
 	}
 
 	baseConfData := map[string]string{}
