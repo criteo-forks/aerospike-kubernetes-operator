@@ -199,9 +199,20 @@ func createPodSpecForRack(
 		&aeroCluster.Spec.PodSpec,
 	).(*asdbv1.AerospikePodSpec)
 
-	rackFullPodSpec.Affinity = rack.PodSpec.Affinity
-	rackFullPodSpec.Tolerations = rack.PodSpec.Tolerations
-	rackFullPodSpec.NodeSelector = rack.PodSpec.NodeSelector
+	// CRITEO: Force rolling restart when changing affinity on cluster level
+	if rack.PodSpec.Affinity != nil {
+		rackFullPodSpec.Affinity = rack.PodSpec.Affinity
+	}
+
+	// CRITEO: Force rolling restart when changing tolerations on cluster level
+	if rack.PodSpec.Tolerations != nil {
+		rackFullPodSpec.Tolerations = rack.PodSpec.Tolerations
+	}
+
+	// CRITEO: Force rolling restart when changing node selector on cluster level
+	if rack.PodSpec.NodeSelector != nil {
+		rackFullPodSpec.NodeSelector = rack.PodSpec.NodeSelector
+	}
 
 	// CRITEO: Include rack-level HostNetwork/DNSPolicy/DNSConfig overrides in hash computation
 	// to trigger rolling restart when these fields change at the rack level
