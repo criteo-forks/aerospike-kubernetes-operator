@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/sets"
+	k8svalidation "k8s.io/apimachinery/pkg/util/validation"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -1260,6 +1261,12 @@ func isFileStorageConfiguredForDir(fileStorageList []string, dir string) bool {
 func validatePodSpec(cluster *asdbv1.AerospikeCluster) error {
 	if cluster.Spec.PodSpec.HostNetwork && asdbv1.GetBool(cluster.Spec.PodSpec.MultiPodPerHost) {
 		return fmt.Errorf("host networking cannot be enabled with multi pod per host")
+	}
+
+	if name := cluster.Spec.PodSpec.ServiceAccountName; name != "" {
+		if errs := k8svalidation.IsDNS1123Subdomain(name); len(errs) > 0 {
+			return fmt.Errorf("invalid serviceAccountName %q: %s", name, strings.Join(errs, ", "))
+		}
 	}
 
 	if err := validateDNS(cluster.Spec.PodSpec.DNSPolicy, cluster.Spec.PodSpec.DNSConfig); err != nil {

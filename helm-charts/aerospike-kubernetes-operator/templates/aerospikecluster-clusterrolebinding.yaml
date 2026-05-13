@@ -16,3 +16,10 @@ subjects:
   name: aerospike-operator-controller-manager
   namespace: {{ $ns }}
 {{- end }}
+{{- with .Values.aerospikeCluster.serviceAccount }}
+{{- if .name }}
+- kind: ServiceAccount
+  name: {{ .name }}
+  namespace: {{ .namespace }}
+{{- end }}
+{{- end }}

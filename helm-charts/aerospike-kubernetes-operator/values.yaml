@@ -18,6 +18,19 @@ rbac:
   create: true
   # serviceAccountName: "default"
 
+## AerospikeCluster ServiceAccount configuration.
+## In addition to the default `aerospike-operator-controller-manager` ServiceAccount
+## (created in each namespace in `watchNamespaces`), users can declare a single
+## extra ServiceAccount. When set, it is added as a subject of the existing
+## aerospike-cluster ClusterRoleBinding so it inherits the aerospike-cluster
+## ClusterRole permissions. Use its name with `spec.podSpec.serviceAccountName`
+## on an AerospikeCluster resource.
+aerospikeCluster:
+  serviceAccount: {}
+  #  name: my-aerospike-sa
+  #  namespace: aerospike
+  #  create: true   # If false, the ServiceAccount is assumed to already exist and only the binding is added.
+
 ## Ports
 healthPort: 8081
 metricsPort: 8443

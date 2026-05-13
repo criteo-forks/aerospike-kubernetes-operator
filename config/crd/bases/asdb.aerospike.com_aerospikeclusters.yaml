@@ -3691,6 +3691,14 @@ spec:
                             type: string
                         type: object
                     type: object
+                  serviceAccountName:
+                    description: |-
+                      ServiceAccountName is the name of the ServiceAccount used to run the aerospike pods.
+                      The ServiceAccount must exist in the cluster namespace and must be bound to a Role/ClusterRole
+                      granting at least the permissions of the default `aerospike-cluster` ClusterRole created by the
+                      operator's Helm chart.
+                      Defaults to "aerospike-operator-controller-manager" if not provided.
+                    type: string
                   sidecars:
                     description: Sidecars to add to the pod.
                     items:
@@ -12873,6 +12881,14 @@ spec:
                             type: string
                         type: object
                     type: object
+                  serviceAccountName:
+                    description: |-
+                      ServiceAccountName is the name of the ServiceAccount used to run the aerospike pods.
+                      The ServiceAccount must exist in the cluster namespace and must be bound to a Role/ClusterRole
+                      granting at least the permissions of the default `aerospike-cluster` ClusterRole created by the
+                      operator's Helm chart.
+                      Defaults to "aerospike-operator-controller-manager" if not provided.
+                    type: string
                   sidecars:
                     description: Sidecars to add to the pod.
                     items:

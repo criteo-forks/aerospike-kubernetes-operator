@@ -31,6 +31,7 @@ import (
 const (
 	// aerospike-operator- is the prefix set in config/default/kustomization.yaml file.
 	// Need to modify this name if prefix is changed in yaml file
+	// This is also the default ServiceAccount used when Spec.PodSpec.ServiceAccountName is unset.
 	aeroClusterServiceAccountName string = "aerospike-operator-controller-manager"
 
 	// This storage path annotation is added in pvc to make reverse association with storage.volume.path
@@ -143,7 +144,7 @@ func (r *SingleClusterReconciler) createSTS(
 					Labels: operatorDefinedLabels,
 				},
 				Spec: corev1.PodSpec{
-					ServiceAccountName: aeroClusterServiceAccountName,
+					ServiceAccountName: getServiceAccountName(r.aeroCluster),
 					// TerminationGracePeriodSeconds: &int64(30),
 					InitContainers: []corev1.Container{
 						{
@@ -1021,6 +1022,7 @@ func (r *SingleClusterReconciler) updateSTSFromPodSpec(
 
 	st.Spec.Template.Spec.SecurityContext = r.aeroCluster.Spec.PodSpec.SecurityContext
 	st.Spec.Template.Spec.ImagePullSecrets = r.aeroCluster.Spec.PodSpec.ImagePullSecrets
+	st.Spec.Template.Spec.ServiceAccountName = getServiceAccountName(r.aeroCluster)
 
 	st.Spec.Template.Spec.Containers =
 		updateSTSContainers(
@@ -1649,6 +1651,14 @@ func newSTSEnvVarStatic(name, value string) corev1.EnvVar {
 		Name:  name,
 		Value: value,
 	}
+}
+
+func getServiceAccountName(aeroCluster *asdbv1.AerospikeCluster) string {
+	if aeroCluster.Spec.PodSpec.ServiceAccountName != "" {
+		return aeroCluster.Spec.PodSpec.ServiceAccountName
+	}
+
+	return aeroClusterServiceAccountName
 }
 
 // Return if volume with name given is present in volumes array else return nil.
