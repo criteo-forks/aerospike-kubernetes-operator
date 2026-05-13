@@ -119,6 +119,27 @@ func TestPodSpecHash_ClusterNodeSelectorChange(t *testing.T) {
 	}
 }
 
+func TestPodSpecHash_ClusterServiceAccountChange(t *testing.T) {
+	rack := &asdbv1.Rack{ID: 1}
+
+	clusterBefore := newCluster(nil, nil, nil)
+	hashBefore, err := computePodSpecHash(clusterBefore, rack)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	clusterAfter := newCluster(nil, nil, nil)
+	clusterAfter.Spec.PodSpec.ServiceAccountName = "custom-aerospike-sa"
+	hashAfter, err := computePodSpecHash(clusterAfter, rack)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if hashBefore == hashAfter {
+		t.Fatal("expected hash to change when cluster-level serviceAccountName is set, but it didn't")
+	}
+}
+
 func TestPodSpecHash_NoChangeWhenNothingChanges(t *testing.T) {
 	rack := &asdbv1.Rack{ID: 1}
 

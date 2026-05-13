@@ -392,6 +392,14 @@ type AerospikePodSpec struct { //nolint:govet // for readability
 	// More info: https://kubernetes.io/docs/concepts/containers/images#specifying-imagepullsecrets-on-a-pod
 	// +optional
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
+
+	// ServiceAccountName is the name of the ServiceAccount used to run the aerospike pods.
+	// The ServiceAccount must exist in the cluster namespace and must be bound to a Role/ClusterRole
+	// granting at least the permissions of the default `aerospike-cluster` ClusterRole created by the
+	// operator's Helm chart.
+	// Defaults to "aerospike-operator-controller-manager" if not provided.
+	// +optional
+	ServiceAccountName string `json:"serviceAccountName,omitempty"`
 }
 
 type AerospikeContainerSpec struct {
