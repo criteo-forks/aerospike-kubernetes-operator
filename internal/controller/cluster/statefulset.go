@@ -655,6 +655,40 @@ func (r *SingleClusterReconciler) updateSTS(
 	// TODO: Add validation. device, file, both should not exist in same storage class
 	r.updateSTSStorage(statefulSet, rackState)
 
+	found, err := r.getSTS(rackState)
+	if err != nil {
+		return fmt.Errorf("failed to get existing StatefulSet %s: %v", statefulSet.Name, err)
+	}
+
+	// StatefulSet VolumeClaimTemplates are immutable, so a plain Update() cannot
+	// add volume claim templates. Only when such a change is detected do we take
+	// the orphan-delete + recreate path (the pods keep running while the
+	// StatefulSet is recreated with the new templates). Otherwise we fall back to
+	// the normal in-place update.
+	if volumeClaimTemplatesChanged(found, statefulSet) {
+		r.Log.Info(
+			"VolumeClaimTemplates changed, recreating StatefulSet with orphaned pods",
+			"statefulSet", statefulSet.Name,
+		)
+
+		newSTS, err := r.replaceSTS(found, rackState)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to replace StatefulSet %s: %v",
+				statefulSet.Name,
+				err,
+			)
+		}
+
+		*statefulSet = *newSTS
+
+		r.Log.V(1).Info(
+			"Saved StatefulSet", "statefulSet", *statefulSet,
+		)
+
+		return nil
+	}
+
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		found, err := r.getSTS(rackState)
 		if err != nil {
@@ -677,6 +711,94 @@ func (r *SingleClusterReconciler) updateSTS(
 	)
 
 	return nil
+}
+
+// volumeClaimTemplatesChanged reports whether the set of VolumeClaimTemplate names
+// differs between the existing and the desired StatefulSet (i.e. a template was
+// added or removed). Such a change is immutable on a StatefulSet and requires
+// delete+recreate rather than an in-place update.
+func volumeClaimTemplatesChanged(found, desired *appsv1.StatefulSet) bool {
+	foundNames := make(sets.Set[string], len(found.Spec.VolumeClaimTemplates))
+	for idx := range found.Spec.VolumeClaimTemplates {
+		foundNames.Insert(found.Spec.VolumeClaimTemplates[idx].Name)
+	}
+
+	desiredNames := make(sets.Set[string], len(desired.Spec.VolumeClaimTemplates))
+	for idx := range desired.Spec.VolumeClaimTemplates {
+		desiredNames.Insert(desired.Spec.VolumeClaimTemplates[idx].Name)
+	}
+
+	return !foundNames.Equal(desiredNames)
+}
+
+// replaceSTS deletes the existing StatefulSet with an orphan propagation policy
+// (preserving its pods and PVCs) and recreates it from scratch via createSTS.
+// This is required to amend the (otherwise immutable) VolumeClaimTemplates of a
+// live StatefulSet without disrupting the running pods.
+//
+// The AerospikeCluster CR is the single source of truth for the StatefulSet spec
+// and metadata, so createSTS reproduces the desired object faithfully (including
+// the new VolumeClaimTemplates) and re-adopts the orphaned pods, waiting for them
+// to become ready.
+func (r *SingleClusterReconciler) replaceSTS(
+	found *appsv1.StatefulSet, rackState *RackState,
+) (*appsv1.StatefulSet, error) {
+	const (
+		deleteWaitMaxRetry = 30
+		deleteWaitInterval = time.Second * 2
+	)
+
+	// Delete the existing STS but orphan its pods (and PVCs) so they keep running.
+	orphan := metav1.DeletePropagationOrphan
+
+	r.Log.Info(
+		"Deleting StatefulSet with orphan propagation to recreate it",
+		"namespace", found.Namespace, "name", found.Name,
+	)
+
+	if err := r.Client.Delete(
+		context.TODO(), found, client.PropagationPolicy(orphan),
+	); err != nil && !errors.IsNotFound(err) {
+		return nil, fmt.Errorf("failed to orphan-delete StatefulSet: %v", err)
+	}
+
+	// Wait until the old STS object is fully gone before recreating with the same name.
+	namespacedName := types.NamespacedName{
+		Namespace: found.Namespace,
+		Name:      found.Name,
+	}
+
+	for i := 0; i < deleteWaitMaxRetry; i++ {
+		tmp := &appsv1.StatefulSet{}
+		getErr := r.Client.Get(context.TODO(), namespacedName, tmp)
+
+		if errors.IsNotFound(getErr) {
+			break
+		}
+
+		if getErr != nil {
+			return nil, fmt.Errorf("failed waiting for StatefulSet deletion: %v", getErr)
+		}
+
+		if i == deleteWaitMaxRetry-1 {
+			return nil, fmt.Errorf("timed out waiting for StatefulSet %s to be deleted", found.Name)
+		}
+
+		time.Sleep(deleteWaitInterval)
+	}
+
+	// Recreate the StatefulSet from scratch via the canonical builder.
+	newSTS, err := r.createSTS(namespacedName, rackState)
+	if err != nil {
+		return nil, fmt.Errorf("failed to recreate StatefulSet: %v", err)
+	}
+
+	r.Log.Info(
+		"Recreated StatefulSet (pods orphaned and re-adopted)",
+		"namespace", newSTS.Namespace, "name", newSTS.Name,
+	)
+
+	return newSTS, nil
 }
 
 // Returns external storage devices and the corresponding source

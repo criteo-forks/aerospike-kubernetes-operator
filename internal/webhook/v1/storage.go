@@ -57,12 +57,10 @@ func validateAddedOrRemovedVolumes(oldStorage, newStorage *asdbv1.AerospikeStora
 		}
 
 		if !matched {
-			if newVolume.Source.PersistentVolume != nil {
-				return []asdbv1.VolumeSpec{}, []asdbv1.VolumeSpec{}, fmt.Errorf(
-					"cannot add persistent volume: %v", newVolume,
-				)
-			}
-
+			// Adding a persistent volume is allowed: it maps to a new
+			// StatefulSet VolumeClaimTemplate, which the reconciler applies via
+			// an orphan-delete + recreate of the StatefulSet (templates are
+			// immutable on an existing StatefulSet).
 			addedVolumes = append(addedVolumes, *newVolume)
 		}
 	}
@@ -79,6 +77,8 @@ func validateAddedOrRemovedVolumes(oldStorage, newStorage *asdbv1.AerospikeStora
 		}
 
 		if !matched {
+			// Removing a persistent volume stays blocked to guard against
+			// unintended volume (and data) deletion.
 			if oldVolume.Source.PersistentVolume != nil {
 				return []asdbv1.VolumeSpec{}, []asdbv1.VolumeSpec{}, fmt.Errorf(
 					"cannot remove persistent volume: %v", oldVolume,
