@@ -665,7 +665,7 @@ func (r *SingleClusterReconciler) updateSTS(
 	// the orphan-delete + recreate path (the pods keep running while the
 	// StatefulSet is recreated with the new templates). Otherwise we fall back to
 	// the normal in-place update.
-	if volumeClaimTemplatesChanged(found, statefulSet) {
+	if volumeClaimTemplatesChanged(found, rackState) {
 		r.Log.Info(
 			"VolumeClaimTemplates changed, recreating StatefulSet with orphaned pods",
 			"statefulSet", statefulSet.Name,
@@ -714,18 +714,25 @@ func (r *SingleClusterReconciler) updateSTS(
 }
 
 // volumeClaimTemplatesChanged reports whether the set of VolumeClaimTemplate names
-// differs between the existing and the desired StatefulSet (i.e. a template was
-// added or removed). Such a change is immutable on a StatefulSet and requires
-// delete+recreate rather than an in-place update.
-func volumeClaimTemplatesChanged(found, desired *appsv1.StatefulSet) bool {
+// differs between the existing StatefulSet and the desired storage spec (i.e. a
+// PV-backed volume was added or removed). Such a change is immutable on a
+// StatefulSet and requires delete+recreate rather than an in-place update.
+//
+// The desired names are derived from the rack storage spec rather than from the
+// in-memory StatefulSet, because updateSTSPVStorage only ever appends
+// VolumeClaimTemplates to the existing StatefulSet (it never prunes removed
+// ones), so a removal would otherwise be invisible.
+func volumeClaimTemplatesChanged(found *appsv1.StatefulSet, rackState *RackState) bool {
 	foundNames := make(sets.Set[string], len(found.Spec.VolumeClaimTemplates))
 	for idx := range found.Spec.VolumeClaimTemplates {
 		foundNames.Insert(found.Spec.VolumeClaimTemplates[idx].Name)
 	}
 
-	desiredNames := make(sets.Set[string], len(desired.Spec.VolumeClaimTemplates))
-	for idx := range desired.Spec.VolumeClaimTemplates {
-		desiredNames.Insert(desired.Spec.VolumeClaimTemplates[idx].Name)
+	desiredVolumes := webhookv1.GetPVsVolumesFromStorage(&rackState.Rack.Storage)
+	desiredNames := make(sets.Set[string], len(desiredVolumes))
+
+	for idx := range desiredVolumes {
+		desiredNames.Insert(desiredVolumes[idx].Name)
 	}
 
 	return !foundNames.Equal(desiredNames)

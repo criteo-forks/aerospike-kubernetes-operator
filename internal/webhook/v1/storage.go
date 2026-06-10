@@ -77,14 +77,12 @@ func validateAddedOrRemovedVolumes(oldStorage, newStorage *asdbv1.AerospikeStora
 		}
 
 		if !matched {
-			// Removing a persistent volume stays blocked to guard against
-			// unintended volume (and data) deletion.
-			if oldVolume.Source.PersistentVolume != nil {
-				return []asdbv1.VolumeSpec{}, []asdbv1.VolumeSpec{}, fmt.Errorf(
-					"cannot remove persistent volume: %v", oldVolume,
-				)
-			}
-
+			// Removing a persistent volume is allowed: the corresponding
+			// StatefulSet VolumeClaimTemplate is dropped via an orphan-delete +
+			// recreate of the StatefulSet (templates are immutable on an
+			// existing StatefulSet). The detach happens on the rolling pod
+			// restart, so with RF>=2 the data migrates off before the next pod
+			// is cycled. The now-orphaned PVCs are intentionally left in place.
 			removedVolumes = append(removedVolumes, *oldVolume)
 		}
 	}

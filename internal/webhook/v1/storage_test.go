@@ -60,10 +60,11 @@ func TestValidateAddedOrRemovedVolumes(t *testing.T) {
 			expectedAdded: []string{"data2"},
 		},
 		{
-			name:       "removing a persistent volume is blocked",
-			oldStorage: storageWith(pvVolume("data"), pvVolume("data2")),
-			newStorage: storageWith(pvVolume("data")),
-			expectErr:  true,
+			name:            "removing a persistent volume is allowed",
+			oldStorage:      storageWith(pvVolume("data"), pvVolume("data2")),
+			newStorage:      storageWith(pvVolume("data")),
+			expectErr:       false,
+			expectedRemoved: []string{"data2"},
 		},
 		{
 			name:            "adding and removing a config map volume is allowed",
