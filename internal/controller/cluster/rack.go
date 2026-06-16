@@ -143,6 +143,23 @@ func (r *SingleClusterReconciler) reconcileRacks() common.ReconcileResult {
 		found := &appsv1.StatefulSet{}
 		stsName := utils.GetNamespacedNameForSTSOrConfigMap(r.aeroCluster, state.Rack.ID)
 
+		// If a previous in-place STS replace was interrupted, the rack's pods and
+		// PVCs are still alive and orphaned; recreate the STS sized to re-adopt
+		// them. Otherwise fall through to the unchanged get/create-empty path.
+		var recovered *appsv1.StatefulSet
+		if recovered, res = r.recoverInterruptedStsReplacement(state); !res.IsSuccess {
+			return res
+		}
+		if recovered != nil {
+			// Recovered != nil means "We were able to recreate the STS".
+			//   . So we return ReconcileRequeue for the next reconciliation loop to find the created STS
+			//   . And continue the rack reconciliation as expected.
+			//   . NB: the subsequent r.Client.Get below may return NotFound (cache lag),
+			//     triggering a code path we shouldn't execute.
+			//   . Hence the ReconcileRequeue to delay the continuation of Rack reconciliation.
+			return common.ReconcileRequeueAfter(1)
+		}
+
 		if err = r.Client.Get(context.TODO(), stsName, found); err != nil {
 			if !errors.IsNotFound(err) {
 				return common.ReconcileError(err)
@@ -203,6 +220,23 @@ func (r *SingleClusterReconciler) reconcileRacks() common.ReconcileResult {
 		found := &appsv1.StatefulSet{}
 		stsName := utils.GetNamespacedNameForSTSOrConfigMap(r.aeroCluster, state.Rack.ID)
 
+		// If a previous in-place STS replace was interrupted, the rack's pods and
+		// PVCs are still alive and orphaned; recreate the STS sized to re-adopt
+		// them. Otherwise fall through to the unchanged get/create-empty path.
+		var recovered *appsv1.StatefulSet
+		if recovered, res = r.recoverInterruptedStsReplacement(state); !res.IsSuccess {
+			return res
+		}
+		if recovered != nil {
+			// Recovered != nil means "We were able to recreate the STS".
+			//   . So we return ReconcileRequeue for the next reconciliation loop to find the created STS
+			//   . And continue the rack reconciliation as expected.
+			//   . NB: the subsequent r.Client.Get below may return NotFound (cache lag),
+			//     triggering a code path we shouldn't execute.
+			//   . Hence the ReconcileRequeue to delay the continuation of Rack reconciliation.
+			return common.ReconcileRequeueAfter(1)
+		}
+
 		if err := r.Client.Get(context.TODO(), stsName, found); err != nil {
 			if !errors.IsNotFound(err) {
 				return common.ReconcileError(err)
@@ -238,6 +272,141 @@ func (r *SingleClusterReconciler) reconcileRacks() common.ReconcileResult {
 	return common.ReconcileSuccess()
 }
 
+// recoverInterruptedStsReplacement handles the case where a rack's StatefulSet is
+// missing because an in-place STS replace was interrupted (replaceSTS
+// orphan-deletes the STS, then a crash/eviction/leader change happens before
+// createSTS recreates it). In that situation the rack's pods and PVCs are still
+// alive and orphaned; recreating the STS at size 0 (the normal new-rack path)
+// would make the scale-up path treat them as dangling and cascade-delete their
+// PVCs (data loss).
+//
+// It fetches the rack's StatefulSet itself so it can be called as a self-contained
+// pre-step that leaves the caller's existing get/create-empty path untouched. If
+// the STS is present, or it is missing but no pods exist for the rack in status
+// (a brand-new rack), it returns (nil, success) so the caller proceeds normally.
+//
+// The interrupted-replace case is distinguished from a brand-new rack using the
+// cluster's pod status (status.pods), the operator's authoritative, durable
+// record of pods that should exist: an entry is added when a pod is initialized
+// and removed only when the operator intentionally removes a pod
+// (scale-down/rack-delete). It survives operator crashes and CR re-delivery
+// (status is a subresource untouched by kubectl apply).
+//
+// If the STS is missing and status.pods has entries for this rack, the STS is
+// recreated sized to re-adopt the orphans (max(desired size, highest status pod
+// ordinal + 1)) and the recreated StatefulSet is returned.
+func (r *SingleClusterReconciler) recoverInterruptedStsReplacement(state *RackState) (
+	*appsv1.StatefulSet, common.ReconcileResult,
+) {
+	found := &appsv1.StatefulSet{}
+	stsName := utils.GetNamespacedNameForSTSOrConfigMap(r.aeroCluster, state.Rack.ID)
+
+	if err := r.Client.Get(context.TODO(), stsName, found); err != nil {
+		if !errors.IsNotFound(err) {
+			return nil, common.ReconcileError(err)
+		}
+
+		// STS is missing: distinguish a brand-new rack from an interrupted replace.
+		size, hasExistingPods, sizeErr := r.replaceRecoverySize(state.Rack.ID, state.Size)
+		if sizeErr != nil {
+			return nil, common.ReconcileError(sizeErr)
+		}
+
+		if hasExistingPods {
+			// Interrupted replace (or any abnormal STS loss on a live rack):
+			// recreate the STS sized to re-adopt the orphaned pods rather than
+			// treating them as dangling. Any size delta versus the desired spec
+			// is handled by the normal scale up/down path on subsequent reconciles.
+			return r.createRecoveringRack(&RackState{Rack: state.Rack, Size: size})
+		}
+	}
+
+	// STS present, or a brand-new rack: nothing to recover, let the caller proceed.
+	return nil, common.ReconcileSuccess()
+}
+
+// createRecoveringRack recreates the StatefulSet of a rack whose pods and PVCs
+// are still alive but whose StatefulSet is missing (an interrupted in-place
+// replace, see replaceSTS / recoverInterruptedStsReplacement). It ensures the rack ConfigMap
+// exists first (buildSTSConfigMap is idempotent, in case the interrupted
+// reconcile never created it and the pods must mount it) and recreates the STS at
+// rackState.Size so it re-adopts the orphaned pods.
+//
+// Unlike createEmptyRack, it deliberately does NOT delete the STS on failure:
+// createSTS returns a non-nil STS when it is created but its pods are not ready
+// within the wait timeout, and deleting it would cascade-delete the very orphan
+// pods we are trying to preserve (and loop). Like replaceSTS, a
+// created-but-not-yet-ready STS is left in place for the next reconcile to await.
+func (r *SingleClusterReconciler) createRecoveringRack(rackState *RackState) (
+	*appsv1.StatefulSet, common.ReconcileResult,
+) {
+	r.Log.Info(
+		"Recovering interrupted StatefulSet replace: recreating sized to re-adopt orphaned pods",
+		"rackID", rackState.Rack.ID, "recoverySize", rackState.Size,
+	)
+
+	name := utils.GetNamespacedNameForSTSOrConfigMap(r.aeroCluster, rackState.Rack.ID)
+	if err := r.buildSTSConfigMap(name, rackState.Rack); err != nil {
+		return nil, common.ReconcileError(
+			fmt.Errorf("failed to build configmap for replace recovery: %v", err),
+		)
+	}
+
+	found, err := r.createSTS(name, rackState)
+	if err != nil {
+		return found, common.ReconcileError(
+			fmt.Errorf("failed to recreate statefulset for replace recovery: %v", err),
+		)
+	}
+
+	r.Recorder.Eventf(
+		r.aeroCluster, corev1.EventTypeNormal, "ReplaceRecovered",
+		"[rack-%d] Recovered interrupted StatefulSet replace; recreated sized to re-adopt orphaned pods (size: %d)",
+		rackState.Rack.ID, rackState.Size,
+	)
+
+	return found, common.ReconcileSuccess()
+}
+
+// replaceRecoverySize inspects the cluster pod status (status.pods) to decide how
+// to recreate a rack whose StatefulSet is missing. It returns whether the rack
+// already had pods (i.e. it is not a brand-new rack) and, when it did, the size
+// needed to re-adopt every orphaned pod: max(desiredSize, highest status pod
+// ordinal + 1). It returns an error if a pod name in status cannot be parsed.
+func (r *SingleClusterReconciler) replaceRecoverySize(rackID int, desiredSize int32) (
+	size int32, hasExistingPods bool, err error,
+) {
+	size = desiredSize
+
+	for podName := range r.aeroCluster.Status.Pods {
+		podRackID, rerr := utils.GetRackIDFromPodName(podName)
+		if rerr != nil {
+			return 0, false, fmt.Errorf(
+				"failed to get rackID from pod name %q for replace recovery: %v", podName, rerr,
+			)
+		}
+
+		if *podRackID != rackID {
+			continue
+		}
+
+		hasExistingPods = true
+
+		ordinal, oerr := getSTSPodOrdinal(podName)
+		if oerr != nil {
+			return 0, false, fmt.Errorf(
+				"failed to get ordinal from pod name %q for replace recovery: %v", podName, oerr,
+			)
+		}
+
+		if *ordinal+1 > size {
+			size = *ordinal + 1
+		}
+	}
+
+	return size, hasExistingPods, nil
+}
+
 func (r *SingleClusterReconciler) createEmptyRack(rackState *RackState) (
 	*appsv1.StatefulSet, common.ReconcileResult,
 ) {
@@ -257,6 +426,11 @@ func (r *SingleClusterReconciler) createEmptyRack(rackState *RackState) (
 
 	found, err := r.createSTS(stsName, rackState)
 	if err != nil {
+		// If by any "cache" the resource was not found before but now do exists, we cannot take the risk of a deletion
+		// It may happen in the case of recovering a STS during a change of volumeClaimTemplate.
+		if errors.IsAlreadyExists(err) {
+			return nil, common.ReconcileError(err)
+		}
 		r.Log.Error(
 			err, "Statefulset setup failed. Deleting statefulset", "name",
 			stsName, "err", err,
