@@ -677,9 +677,11 @@ func ValidateAerospikeConfigUpdateWithoutSchema(oldConfig, newConfig map[string]
 		return err
 	}
 
+	/* CRITEO: disabling tls check, code is functionally too strict, it prevents us to move location of certificates
 	if err := validateTLSUpdate(oldConfig, newConfig); err != nil {
 		return err
 	}
+	*/
 
 	for _, connectionType := range networkConnectionTypes {
 		if err := validateNetworkConnectionUpdate(oldConfig, newConfig, connectionType); err != nil {
