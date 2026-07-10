@@ -1281,6 +1281,8 @@ func (r *SingleClusterReconciler) rollingRestartRack(
 
 		// CRITEO: to repair namespace provisioning, we need to restart from the lowest ordinal upward
 		// when recreated StatefulSets adopt old pods after storage changes add new PVCs.
+		// Helper function getOrderedRackPodList is used by rack upgrade and scale down operations.
+		// Reordering the list here to not impact other operations by this fix
 		podList = reorderPodsForRollingRestart(podList)
 	}
 
