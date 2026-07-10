@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	asdbv1 "github.com/aerospike/aerospike-kubernetes-operator/v4/api/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // statusPods builds a status.pods map from the given pod names.
@@ -113,5 +115,31 @@ func TestReplaceRecoverySize(t *testing.T) {
 				t.Errorf("size = %d, want %d", size, tc.wantSize)
 			}
 		})
+	}
+}
+
+func TestReorderPodsForRollingRestart(t *testing.T) {
+	pods := []*corev1.Pod{
+		{ObjectMeta: metav1.ObjectMeta{Name: "aerospikes99-p02-11-2"}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "aerospikes99-p02-11-1"}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "aerospikes99-p02-11-0"}},
+	}
+
+	reordered := reorderPodsForRollingRestart(pods)
+
+	got := getPodNames(reordered)
+	want := []string{"aerospikes99-p02-11-0", "aerospikes99-p02-11-1", "aerospikes99-p02-11-2"}
+	for idx := range want {
+		if got[idx] != want[idx] {
+			t.Fatalf("reordered pods = %v, want %v", got, want)
+		}
+	}
+
+	original := getPodNames(pods)
+	wantOriginal := []string{"aerospikes99-p02-11-2", "aerospikes99-p02-11-1", "aerospikes99-p02-11-0"}
+	for idx := range wantOriginal {
+		if original[idx] != wantOriginal[idx] {
+			t.Fatalf("original pods mutated = %v, want %v", original, wantOriginal)
+		}
 	}
 }
