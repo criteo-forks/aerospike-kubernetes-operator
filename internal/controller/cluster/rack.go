@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -1277,6 +1278,10 @@ func (r *SingleClusterReconciler) rollingRestartRack(
 		if err != nil {
 			return found, common.ReconcileError(fmt.Errorf("failed to list pods: %v", err))
 		}
+
+		// CRITEO: to repair namespace provisioning, we need to restart from the lowest ordinal upward
+		// when recreated StatefulSets adopt old pods after storage changes add new PVCs.
+		podList = reorderPodsForRollingRestart(podList)
 	}
 
 	err = r.updateSTS(found, rackState)
@@ -1366,6 +1371,13 @@ func (r *SingleClusterReconciler) rollingRestartRack(
 	)
 
 	return found, common.ReconcileSuccess()
+}
+
+func reorderPodsForRollingRestart(pods []*corev1.Pod) []*corev1.Pod {
+	reordered := slices.Clone(pods)
+	slices.Reverse(reordered)
+
+	return reordered
 }
 
 func (r *SingleClusterReconciler) handleK8sNodeBlockListPods(
