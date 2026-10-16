@@ -1714,15 +1714,18 @@ func UpdateClusterTest(ctx goctx.Context) {
 					// 	aeroCluster.Spec.Image = old
 					// })
 					It(
-						"MultiPodPerHost: should fail for updating MultiPodPerHost. Cannot be updated",
+						"MultiPodPerHost: should fail for disabling MultiPodPerHost. Cannot be disabled",
 						func() {
 							aeroCluster, err := getCluster(
 								k8sClient, ctx, clusterNamespacedName,
 							)
 							Expect(err).ToNot(HaveOccurred())
 
-							multiPodPerHost := !*aeroCluster.Spec.PodSpec.MultiPodPerHost
-							aeroCluster.Spec.PodSpec.MultiPodPerHost = &multiPodPerHost
+							if !asdbv1.GetBool(aeroCluster.Spec.PodSpec.MultiPodPerHost) {
+								Skip("MultiPodPerHost is not enabled, nothing to disable")
+							}
+
+							aeroCluster.Spec.PodSpec.MultiPodPerHost = ptr.To(false)
 
 							err = k8sClient.Update(ctx, aeroCluster)
 							Expect(err).Should(HaveOccurred())

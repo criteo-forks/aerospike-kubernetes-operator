@@ -130,10 +130,11 @@ func (acv *AerospikeClusterCustomValidator) ValidateUpdate(_ context.Context, ol
 		return warnings, fmt.Errorf("storage config cannot be updated: %v", err)
 	}
 
-	// MultiPodPerHost cannot be updated
-	if asdbv1.GetBool(aerospikeCluster.Spec.PodSpec.MultiPodPerHost) !=
-		asdbv1.GetBool(oldObject.Spec.PodSpec.MultiPodPerHost) {
-		return warnings, fmt.Errorf("cannot update MultiPodPerHost setting")
+	// MultiPodPerHost can be enabled on an existing cluster, but not disabled
+	if err := validateMultiPodPerHostChange(
+		oldObject.Spec.PodSpec.MultiPodPerHost, aerospikeCluster.Spec.PodSpec.MultiPodPerHost,
+	); err != nil {
+		return warnings, err
 	}
 
 	if err := validateNetworkPolicyUpdate(
@@ -1710,4 +1711,14 @@ func getMinRunningInitVersion(pods map[string]asdbv1.AerospikePodStatus) (string
 	}
 
 	return minVersion, nil
+}
+
+// validateMultiPodPerHostChange allows enabling MultiPodPerHost (false -> true), which rolling restarts the
+// cluster, and rejects disabling it, as pod services created while enabled would be left behind.
+func validateMultiPodPerHostChange(oldValue, newValue *bool) error {
+	if asdbv1.GetBool(oldValue) && !asdbv1.GetBool(newValue) {
+		return fmt.Errorf("cannot disable MultiPodPerHost setting")
+	}
+
+	return nil
 }
