@@ -479,8 +479,12 @@ func validateRackUpdate(
 		for specIdx := range newObj.Spec.RackConfig.Racks {
 			newRack := newObj.Spec.RackConfig.Racks[specIdx]
 			if oldRack.ID == newRack.ID {
+				// RackLabel may be added or removed, but its value cannot be changed
+				rackLabelChanged := oldRack.RackLabel != newRack.RackLabel &&
+					oldRack.RackLabel != "" && newRack.RackLabel != ""
+
 				if oldRack.NodeName != newRack.NodeName ||
-					oldRack.RackLabel != newRack.RackLabel ||
+					rackLabelChanged ||
 					oldRack.Region != newRack.Region ||
 					oldRack.Zone != newRack.Zone {
 					return fmt.Errorf(
