@@ -375,3 +375,64 @@ func TestMutatingWebhook_RackID_Override(t *testing.T) {
 		})
 	}
 }
+
+// A namespace rack-id override of 0 must survive on a rack whose ID is not 0:
+// the database rack-id (e.g. failure domain fd0) is independent of the rack ID
+// that names the StatefulSet.
+func TestMutatingWebhook_RackID_OverrideZero(t *testing.T) {
+	tests := []struct {
+		name           string
+		rackID         int
+		inputRackID    interface{}
+		expectedRackID float64
+	}{
+		{
+			name:           "rack-id override of 0 is preserved on a non-zero rack ID",
+			rackID:         10,
+			inputRackID:    float64(0),
+			expectedRackID: float64(0),
+		},
+		{
+			name:           "rack-id not set defaults to a non-zero rack ID",
+			rackID:         10,
+			inputRackID:    nil,
+			expectedRackID: float64(10),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cluster := createMinimalCluster()
+			cluster.Spec.RackConfig.Namespaces = []string{"test"}
+
+			rack := asdbv1.Rack{ID: tt.rackID}
+			if tt.inputRackID != nil {
+				rack.InputAerospikeConfig = &asdbv1.AerospikeConfigSpec{
+					Value: map[string]interface{}{
+						"namespaces": []interface{}{
+							map[string]interface{}{
+								"name":    "test",
+								"rack-id": tt.inputRackID,
+							},
+						},
+					},
+				}
+			}
+			cluster.Spec.RackConfig.Racks = []asdbv1.Rack{rack}
+
+			defaulter := &webhookv1.AerospikeClusterCustomDefaulter{}
+			if err := defaulter.Default(context.Background(), cluster); err != nil {
+				t.Fatalf("Default() failed: %v", err)
+			}
+
+			rackNamespaces := cluster.Spec.RackConfig.Racks[0].AerospikeConfig.Value["namespaces"].([]interface{})
+			actualRackID, ok := rackNamespaces[0].(map[string]interface{})["rack-id"]
+			if !ok {
+				t.Fatalf("rack-id not found in namespace config")
+			}
+			if actualRackID != tt.expectedRackID {
+				t.Errorf("expected rack-id=%v, got %v", tt.expectedRackID, actualRackID)
+			}
+		})
+	}
+}

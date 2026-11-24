@@ -436,9 +436,11 @@ func setDefaultNsConf(asLog logr.Logger, configSpec asdbv1.AerospikeConfigSpec,
 						// rack-id was historically set to 0 for all namespaces, but since the AKO 3.3.0, it reflects actual values.
 						// During the AKO 3.3.0 upgrade rack-id for namespaces in rack specific config is set to 0.
 						// Hence, deleting this 0 rack-id so that correct rack-id will be added.
-						if id, ok := nsMap["rack-id"]; ok && id == float64(0) && *rackID != 0 {
-							delete(nsMap, "rack-id")
-						}
+						// CRITEO: disabled because it silently dropped an explicit override of 0, which is a valid
+						// database rack-id (e.g. failure domain fd0 on rack 10).
+						// if id, ok := nsMap["rack-id"]; ok && id == float64(0) && *rackID != 0 {
+						// 	delete(nsMap, "rack-id")
+						// }
 
 						// CRITEO: Allow override of rack-id by storing it in a dedicated variable to restore it after default value assignation.
 						// We have RackID which is the rack.id in aerospikecluster defining the STS name.
